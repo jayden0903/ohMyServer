@@ -149,6 +149,7 @@ def run(recipe: dict | str | Path, verbose: bool = True) -> dict:
         IO.save(final, out / "final_16bit.tif", meta)
     A.side_by_side(base, img, out / "before_after.jpg")
     IO.save_preview(base, out / "base.jpg", 1600)
+    IO.save_preview(base, out / "before_web.jpg", 2400, quality=90)   # for the before/after slider
     IO.save_preview(img, out / "final_preview.jpg", 1600)
     skin_m = None
     if ctx.get("prob") is not None and ctx["prob"].shape[1:] == base.shape[:2]:
