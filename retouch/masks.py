@@ -21,10 +21,12 @@ def darks(img: np.ndarray, n: int = 1) -> np.ndarray:
 
 
 def midtones(img: np.ndarray, n: int = 1) -> np.ndarray:
-    """TK-style midtones = All - Lights_n - Darks_n, normalized to peak 1."""
+    """Midtones = All minus Lights_n minus Darks_n, with selection subtraction done the way
+    Photoshop does it (A * (1 - B)), so M1 = L(1-L) is not zero; normalized to peak 1.
+    (Plain arithmetic 1 - L - (1-L) is identically 0 for n = 1.)"""
     l = C.luminance(img)
-    m = np.clip(1.0 - l ** n - (1.0 - l) ** n, 0, 1)
-    return m / max(float(m.max()), 1e-6)
+    m = (1.0 - l ** n) * (1.0 - (1.0 - l) ** n)
+    return np.clip(m / max(float(m.max()), 1e-6), 0, 1)
 
 
 def zone(img: np.ndarray, center: float, width: float = 0.25) -> np.ndarray:
@@ -121,6 +123,40 @@ def guided_refine(m: np.ndarray, img: np.ndarray, radius: int = 8, eps: float = 
     return np.clip(box(a) * I + box(b), 0, 1)
 
 
+def grabcut(img: np.ndarray, rect: list[float], fg: list[list[float]] | None = None,
+            bg: list[list[float]] | None = None, iters: int = 6, work_px: int = 1400,
+            refine_radius: int = 6) -> np.ndarray:
+    """Subject selection like Quick Selection / Select Subject, but classical: GrabCut graph cut
+    seeded with a rectangle plus definite-foreground/background dabs ([x, y, r] normalized, r as a
+    fraction of width), run on a downscaled copy, then upsampled and edge-refined against the
+    full-resolution luminance with a guided filter so the edge follows the real contour."""
+    h, w = img.shape[:2]
+    s = min(1.0, work_px / max(h, w))
+    small = cv2.resize(img, (int(w * s), int(h * s)), interpolation=cv2.INTER_AREA) if s < 1 else img
+    sh, sw = small.shape[:2]
+    u8 = cv2.cvtColor((np.clip(small, 0, 1) * 255).astype(np.uint8), cv2.COLOR_RGB2BGR)
+    mask = np.full((sh, sw), cv2.GC_BGD, np.uint8)
+    x0, y0, x1, y1 = rect
+    mask[int(y0 * sh):int(y1 * sh), int(x0 * sw):int(x1 * sw)] = cv2.GC_PR_FGD
+    for pts, val in ((bg or [], cv2.GC_BGD), (fg or [], cv2.GC_FGD)):
+        for x, y, r in pts:
+            cv2.circle(mask, (int(x * sw), int(y * sh)), max(1, int(r * sw)), int(val), -1)
+    bgm, fgm = np.zeros((1, 65), np.float64), np.zeros((1, 65), np.float64)
+    cv2.grabCut(u8, mask, None, bgm, fgm, iters, cv2.GC_INIT_WITH_MASK)
+    m = np.isin(mask, (cv2.GC_FGD, cv2.GC_PR_FGD)).astype(np.float32)
+    # keep the component(s) touching definite foreground only
+    n, lab = cv2.connectedComponents((m > 0).astype(np.uint8))
+    keep = set()
+    for x, y, r in fg or []:
+        v = lab[min(sh - 1, int(y * sh)), min(sw - 1, int(x * sw))]
+        if v > 0:
+            keep.add(int(v))
+    if keep:
+        m = np.isin(lab, list(keep)).astype(np.float32)
+    m = cv2.resize(m, (w, h), interpolation=cv2.INTER_LINEAR)
+    return guided_refine(m, img, radius=refine_radius, eps=2e-4)
+
+
 # ---- declarative spec -----------------------------------------------------------------
 def build(img: np.ndarray, spec: dict | None, ctx: dict | None = None) -> np.ndarray | None:
     """Build a mask from a dict, e.g.
@@ -167,6 +203,21 @@ def build(img: np.ndarray, spec: dict | None, ctx: dict | None = None) -> np.nda
             ex = F.part_mask(prob, spec["exclude_parts"], 0)
             ex = choke(ex, -int(spec.get("exclude_grow", 2)))
             m *= 1.0 - feather(ex, spec.get("exclude_feather", 2.0))
+    if spec.get("grabcut"):
+        g = dict(spec["grabcut"])
+        key = "grabcut:" + repr(sorted(g.items()))
+        if ctx is not None and key in ctx:
+            gm = ctx[key]
+        else:
+            gm = grabcut(img, **g)
+            if ctx is not None:
+                ctx[key] = gm
+        if spec.get("grabcut_union"):
+            for s2 in spec["grabcut_union"]:
+                gm = np.maximum(gm, shape_mask(s2))
+        m *= gm
+    if spec.get("minus"):                 # mask math: subtract another mask spec
+        m *= 1.0 - build(img, spec["minus"], ctx)
     if spec.get("skin"):
         m *= skin(img, loose=spec.get("skin") == "loose")
     if spec.get("include"):
