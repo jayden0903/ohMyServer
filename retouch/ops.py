@@ -312,6 +312,30 @@ def shine_reduce(img: np.ndarray, mask: np.ndarray, threshold: float = 0.80, amo
 
 
 # ---- healing ---------------------------------------------------------------------------
+def fill_from_surround(x: np.ndarray, hole: np.ndarray, sigma: float = 4.0, levels: int = 5) -> np.ndarray:
+    """Fill `hole` (bool/0-1, HxW) from surrounding pixels by multi-scale normalized convolution.
+    Smooth, exact outside the hole, works on float data of any channel count (cv2.inpaint is
+    unreliable on float32 in OpenCV 5)."""
+    known = (hole < 0.5).astype(np.float32)
+    x = x.astype(np.float32)
+    xs = x if x.ndim == 3 else x[..., None]
+    out = xs.copy()
+    filled = known.copy()
+    for i in range(levels):
+        sg = sigma * (2 ** i)
+        wsum = C.gaussian(known, sg)
+        est = np.stack([C.gaussian(xs[..., c] * known, sg) for c in range(xs.shape[2])], -1) / np.maximum(wsum, 1e-6)[..., None]
+        take = (filled < 0.5) & (wsum > 1e-3)
+        out[take] = est[take]
+        filled = np.maximum(filled, take.astype(np.float32))
+        if filled.min() >= 0.5:
+            break
+    # one smoothing pass inside the hole so the fill has no level seams
+    sm = np.stack([C.gaussian(out[..., c], sigma) for c in range(out.shape[2])], -1)
+    h = (hole >= 0.5)[..., None]
+    out = np.where(h, sm, xs)
+    return out if x.ndim == 3 else out[..., 0]
+
 def _disk(h: int, w: int, cx: float, cy: float, r: float, feather: float = 0.35) -> np.ndarray:
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
     d = np.hypot(xx - cx, yy - cy) / max(r, 1e-6)
@@ -342,8 +366,7 @@ def heal(img: np.ndarray, spots: list[dict], search: float = 3.0) -> np.ndarray:
         sig = max(0.8, r / 3.0)
         low = np.stack([C.gaussian(reg[..., c], sig) for c in range(3)], -1)
         high = reg - low
-        filled = np.stack([cv2.inpaint(low[..., c].astype(np.float32), hard, max(3, int(r)),
-                                       cv2.INPAINT_TELEA) for c in range(3)], -1)
+        filled = fill_from_surround(low, hard, sigma=max(1.5, r / 2))
         filled = np.stack([C.gaussian(filled[..., c], sig * 0.5) for c in range(3)], -1)
 
         # choose texture source
@@ -376,6 +399,84 @@ def heal(img: np.ndarray, spots: list[dict], search: float = 3.0) -> np.ndarray:
         patched = filled + best_high
         out[y0:y1, x0:x1] = reg + disk[..., None] * (patched - reg)
     return np.clip(out, 0, 1)
+
+
+def remove_lines(img: np.ndarray, mask: np.ndarray, width_px: float = 3.0, threshold: float = 2.5,
+                 dark: bool = True) -> np.ndarray:
+    """Remove thin straight wires over smooth areas (sky) -- spot healing along a path.
+    Wires are found as straight segments (Hough) in a morphological black-hat (top-hat for light
+    wires) inside `mask`, drawn as a thin band, kept strictly inside the mask, and filled from the
+    surrounding sky by normalized convolution (no generative fill)."""
+    L = (C.luminance(img) * 255).astype(np.float32)
+    k = int(max(3, round(width_px * 3)) | 1)
+    se = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
+    resp = cv2.morphologyEx(L, cv2.MORPH_BLACKHAT if dark else cv2.MORPH_TOPHAT, se)
+    # the region the wires cross: the mask with the wires themselves closed over, kept a few px
+    # away from anything that is not sky (ridge lines, roofs)
+    sel = mask > 0.5
+    region = cv2.morphologyEx(sel.astype(np.uint8), cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * k + 1, 2 * k + 1)))
+    region = cv2.erode(region, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))) > 0
+    sel = region
+    noise = float(np.median(resp[sel])) * 1.4826 + 0.5 if sel.any() else 1.0
+    binary = ((resp > threshold * noise + 1.0) & sel).astype(np.uint8) * 255
+    h, w = L.shape
+    segs = cv2.HoughLinesP(binary, 1, np.pi / 720, threshold=30, minLineLength=int(max(h, w) * 0.04), maxLineGap=12)
+    band = np.zeros((h, w), np.uint8)
+    sky = mask > 0.5
+    # local texture: wires are only removed over smooth areas (sky); over foliage or ridges a
+    # fill would smear real detail, which is a clone-stamp job instead
+    wire_px = cv2.dilate(binary, np.ones((5, 5), np.uint8))
+    mu = cv2.blur(L, (7, 7))
+    lstd = np.sqrt(np.maximum(cv2.blur(L * L, (7, 7)) - mu * mu, 0))
+    off = width_px + 4
+    thick = int(round(width_px * 2 + 3))
+    for x1, y1, x2, y2 in (np.asarray(segs).reshape(-1, 4) if segs is not None else []):
+        length = math.hypot(x2 - x1, y2 - y1)
+        if length < 1:
+            continue
+        nx, ny = -(y2 - y1) / length, (x2 - x1) / length
+        n = int(length // 2) + 1
+        for t in np.linspace(0, 1, n):
+            px, py = x1 + t * (x2 - x1), y1 + t * (y2 - y1)
+            pts = []
+            for sgn in (1, -1):  # step past neighbouring parallel wires to reach clean sky
+                q = None
+                for mult in (1, 2, 3, 4):
+                    qx, qy = px + sgn * nx * off * mult, py + sgn * ny * off * mult
+                    if not (0 <= int(qy) < h and 0 <= int(qx) < w):
+                        break
+                    q = (qx, qy)
+                    if wire_px[int(qy), int(qx)] == 0:
+                        break
+                pts.append(q if q is not None else (-1, -1))
+            # a wire has sky on both sides; a ridge or roof edge does not
+            # at the frame border only one side exists; judge by that side alone
+            pts = [q for q in pts if 0 <= int(q[1]) < h and 0 <= int(q[0]) < w] or pts
+            inside = all(0 <= int(qy) < h and 0 <= int(qx) < w and sky[int(qy), int(qx)] for qx, qy in pts)
+            if inside and abs(L[int(pts[0][1]), int(pts[0][0])] - L[int(pts[-1][1]), int(pts[-1][0])]) < 14 \
+                    and max(lstd[int(qy), int(qx)] for qx, qy in pts) < 4.0:
+                cv2.circle(band, (int(round(px)), int(round(py))), thick // 2 + 1, 1, -1)
+    band &= sel.astype(np.uint8)
+    if not band.any():
+        return img
+    out = fill_from_surround(img, band, sigma=max(2.0, width_px))
+    out = _match_grain(img, out, band)
+    soft = C.gaussian(band.astype(np.float32), 0.8)[..., None]
+    return np.clip(img + soft * (out - img), 0, 1)
+
+
+def _match_grain(img: np.ndarray, out: np.ndarray, hole: np.ndarray, seed: int = 11) -> np.ndarray:
+    """Give a smooth fill the fine luminance grain measured just outside it."""
+    Lh = C.luminance(img)
+    hf = Lh - C.gaussian(Lh, 1.0)
+    ring = (cv2.dilate(hole.astype(np.uint8), np.ones((15, 15), np.uint8)) > 0) & (hole == 0)
+    g = float(hf[ring].std()) * 0.5 if ring.any() else 0.0
+    if g <= 0:
+        return out
+    n = np.random.default_rng(seed).standard_normal(hole.shape).astype(np.float32)
+    n = C.gaussian(n, 0.9)
+    n *= g / (float(n.std()) + 1e-6)
+    return C.replace_luminance(out, C.luminance(out) + n * (hole > 0))
 
 
 def clone(img: np.ndarray, dst: list[float], src: list[float], r: float, feather: float = 0.5) -> np.ndarray:

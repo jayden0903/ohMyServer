@@ -37,7 +37,7 @@ GEOMETRY = {
 }
 
 # ops whose function takes the mask itself (the mask selects *where to measure/correct*)
-MASK_AWARE = {"micro_db", "color_even", "shine_reduce", "match_skin", "color_fix"}
+MASK_AWARE = {"remove_lines", "micro_db", "color_even", "shine_reduce", "match_skin", "color_fix"}
 
 ADJUST = {
     "curves": lambda img, s, m: O.curves(img, s["points"], s.get("channel", "rgb")),
@@ -71,6 +71,8 @@ ADJUST = {
     "dodge_burn": lambda img, s, m: O.dodge_burn(img, s["strokes"]),
     "shine_reduce": lambda img, s, m: O.shine_reduce(img, m, s.get("threshold", 0.8), s.get("amount", 0.5),
                                                      s.get("sigma", 6)),
+    "remove_lines": lambda img, s, m: O.remove_lines(img, m, s.get("width_px", 3.0), s.get("threshold", 2.5),
+                                                     s.get("dark", True)),
     "heal": lambda img, s, m: O.heal(img, s["spots"], s.get("search", 3.0)),
     "clone": lambda img, s, m: _clone_all(img, s["strokes"]),
     "sharpen": lambda img, s, m: O.sharpen(img, s.get("radius", 1.0), s.get("amount", 0.6), s.get("threshold", 0.01)),
