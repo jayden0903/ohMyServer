@@ -206,7 +206,16 @@ def metrics(orig: np.ndarray, edit: np.ndarray, skin_mask: np.ndarray | None = N
     sel = m > 0.6
     Lo, Le = C.luminance(orig) * 100, C.luminance(edit) * 100
     hf = lambda L: L - C.gaussian(L, pore_px * 1.5)
-    tex_o, tex_e = float(hf(Lo)[sel].std()) if sel.any() else 0, float(hf(Le)[sel].std()) if sel.any() else 0
+    # Texture retention = projection of the edited fine detail onto the ORIGINAL fine detail.
+    # Plain std ratios can be gamed: added grain restores std while the real pores are gone.
+    ho, he = hf(Lo)[sel], hf(Le)[sel]
+    tex_o = float((ho * ho).sum()) if sel.any() else 0.0
+    tex_e = float((ho * he).sum()) if sel.any() else 0.0
+    # pore-structure band (what reads as 'skin' at normal viewing), same projection measure
+    pb = lambda L: C.gaussian(L, pore_px * 1.0) - C.gaussian(L, pore_px * 4.0)
+    po, pe = pb(Lo)[sel], pb(Le)[sel]
+    tex2 = float((po * pe).sum() / ((po * po).sum() + 1e-9)) if sel.any() else 0.0
+    noise_added = float(np.sqrt(max(((he - ho * (tex_e / (tex_o + 1e-9))) ** 2).mean(), 0))) if sel.any() else 0.0
     bl = lambda L: O.band(L, *blotch, support=sel)
     bo, be = float(bl(Lo)[sel].std()) if sel.any() else 0, float(bl(Le)[sel].std()) if sel.any() else 0
     s = 800 / max(orig.shape[:2])
@@ -215,7 +224,9 @@ def metrics(orig: np.ndarray, edit: np.ndarray, skin_mask: np.ndarray | None = N
     clip_hi = float((edit.max(-1) >= 0.998).mean())
     clip_lo = float((edit.min(-1) <= 0.002).mean())
     res = {
-        "texture_retention": round(tex_e / (tex_o + 1e-6), 3),
+        "texture_retention": round(min(tex_e / (tex_o + 1e-6), tex2), 3),
+        "texture_fine": round(tex_e / (tex_o + 1e-6), 3), "texture_pore_band": round(tex2, 3),
+        "texture_foreign_rms": round(noise_added, 3),
         "blotch_reduction": round(1 - be / (bo + 1e-6), 3),
         "deltaE_mean": round(float(de.mean()), 2), "deltaE_p95": round(float(np.percentile(de, 95)), 2),
         "clip_high_pct": round(clip_hi * 100, 3), "clip_low_pct": round(clip_lo * 100, 3),

@@ -130,9 +130,12 @@ def hue_sat(img: np.ndarray, center: float, width: float = 30.0, soft: float = 2
     hsv = C.rgb_to_hsv(img)
     d = C.hue_distance(hsv[..., 0], center)
     w = np.clip(1.0 - (d - width / 2) / max(soft, 1e-6), 0, 1) * C.smoothstep(0.02, 0.08, hsv[..., 1])
+    L0 = C.luminance(img)
     hsv[..., 0] = (hsv[..., 0] + hue * w) % 360
     hsv[..., 1] = np.clip(hsv[..., 1] * (1 + sat * w), 0, 1)
-    out = C.hsv_to_rgb(hsv)
+    # Desaturating at constant HSV value brightens (and saturating darkens) the pixel. Keep the
+    # original luminance so hue/sat moves color only; tone changes go through `light`.
+    out = C.replace_luminance(C.hsv_to_rgb(hsv), L0)
     if light:
         L = C.luminance(out)
         L = L + light * w * (1 - L if light > 0 else L)
@@ -303,7 +306,9 @@ def shine_reduce(img: np.ndarray, mask: np.ndarray, threshold: float = 0.80, amo
     L = lab[..., 0] / 100
     hot = C.smoothstep(threshold, min(1.0, threshold + 0.12), C.gaussian(L, sigma / 3)) * mask
     surround = C.gaussian(L, sigma * 3)
-    target = L - amount * hot * np.maximum(L - surround, 0)
+    # lower only the low-frequency excess, so pores and texture inside the highlight survive
+    low = C.gaussian(L, sigma / 2)
+    target = L - amount * hot * np.maximum(low - surround, 0)
     lab[..., 0] = target * 100
     # Specular spots are desaturated; give back a little of the surrounding skin color.
     for ch in (1, 2):

@@ -61,6 +61,9 @@ figcaption { font-size: 12.5px; color: var(--muted); }
 .masks figure img { aspect-ratio: 3 / 2; object-fit: cover; }
 .masks figcaption { font-size: 12px; line-height: 1.45; }
 .op { font-family: var(--f-mono); font-size: 11.5px; color: var(--ink); }
+.trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 640px) { .trio { grid-template-columns: 1fr; } }
+.bad figcaption { color: var(--accent); }
 .notes { display: grid; gap: 14px; min-width: 0; align-content: start; }
 .genre { justify-self: start; font-family: var(--f-mono); font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; border: 1px solid currentColor; border-radius: 999px; padding: 2px 10px; color: var(--muted); }
 .notes h2 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.3; text-wrap: balance; }
@@ -80,11 +83,13 @@ footer.credits a { color: inherit; }
 
 <div class="wrap">
   <header class="top">
-    <span class="edge">non-generative retouching · 6 cases</span>
+    <span class="edge">non-generative retouching · 8 cases</span>
     <h1>보정 사례집<span class="mark">.</span></h1>
-    <p class="lede">무료 사진 여섯 장을 생성형 AI 없이 회전, 크롭, 커브, 마스크, 닷지&amp;번만으로 보정했습니다. 각 사례에 무엇이 문제였고, 무엇을 했고, 일부러 무엇을 하지 않았는지 적었습니다. 사진 위 슬라이더를 좌우로 끌면 전후를 비교할 수 있어요.</p>
+    <p class="lede">무료 사진 여덟 장을 생성형 AI 없이 회전, 크롭, 커브, 마스크, 닷지&amp;번만으로 보정했습니다. 각 사례에 무엇이 문제였고, 무엇을 했고, 일부러 무엇을 하지 않았는지 적었습니다. 사진 위 슬라이더를 좌우로 끌면 전후를 비교할 수 있어요.</p>
   </header>
   <nav class="toc" aria-label="사례 목록">
+    <a href="#skin">인물 · 피부 극한</a>
+    <a href="#bold">튤립 · 진하게</a>
     <a href="#tulip">튤립 · 마스크 7장</a>
     <a href="#beach">해변 · 0.58° 수평</a>
     <a href="#tilt">등대 · 3.5° 기울기 테스트</a>
@@ -92,6 +97,62 @@ footer.credits a { color: inherit; }
     <a href="#arch">건축 · 대칭과 톤</a>
     <a href="#coffee">커피 · 제품 무드</a>
   </nav>
+
+  <!-- skin -->
+  <section class="case" id="skin" aria-labelledby="h-skin">
+    <div class="media">
+      <div class="ba" style="--cut:50%"><img src="img/h_before.jpg" alt="피부 보정 전"><div class="after"><img src="img/h_after.jpg" alt="피부 보정 후"></div><div class="bar"></div><span class="tag l">전</span><span class="tag r">후</span><input type="range" min="0" max="100" value="50" aria-label="피부 전후 비교 위치" data-ba></div>
+      <div class="ba" style="--cut:50%"><img src="img/h_zoom_before.jpg" alt="코와 눈 확대 보정 전"><div class="after"><img src="img/h_zoom_after.jpg" alt="코와 눈 확대 보정 후"></div><div class="bar"></div><span class="tag l">전</span><span class="tag r">후</span><input type="range" min="0" max="100" value="50" aria-label="확대 전후 비교 위치" data-ba></div>
+      <div class="pair">
+        <figure class="bad"><img src="img/h_fail.jpg" alt="1차 시도: 피부가 플라스틱처럼 매끈하고 코에 이음새, 홍채가 회색" loading="lazy"><figcaption>1차 시도 (실패): 모공 대역 질감 0.75, 코 이음새, 회색 홍채</figcaption></figure>
+        <figure><img src="img/h_good.jpg" alt="최종: 모공과 수염이 남아 있음" loading="lazy"><figcaption>최종: 모공 대역 질감 0.91</figcaption></figure>
+      </div>
+    </div>
+    <div class="notes">
+      <span class="genre">뷰티 · 피부 극한</span>
+      <h2 id="h-skin">끝까지 밀되, 모공은 남긴다</h2>
+      <p class="problem">모공이 크고, 볼과 코에 붉은 얼룩이 있고, 눈 밑이 어둡고, 이마와 콧등이 번들거립니다.</p>
+      <h3>한 일 (15단계)</h3>
+      <ol>
+        <li>잡티 후보 150개 중 직접 검토해 8개만 힐링. 수염, 헤어라인, 콧등, 빛 경계 위 점은 제외</li>
+        <li>마이크로 닷지&amp;번 두 대역: 모공보다 큰 얼룩(4.5~16px)은 강하게, 큰 얼룩(10~26px)은 약하게. 코는 형태 보호를 위해 제외</li>
+        <li>붉은 얼룩 색 고르기, 빨강 채도 낮춤, 피부 색상각 46.9° → 53°대 (b* ≥ a*)</li>
+        <li>눈 밑과 팔자 주름은 닷지로만 완화, 이마와 콧등 번들거림 제어</li>
+        <li>흰자만(눈 × 밝은 영역) 핏줄 제거, 홍채 국소 대비, 볼 옆과 턱 밑 번으로 윤곽</li>
+      </ol>
+      <h3>1차 실패에서 배운 것</h3>
+      <p class="judge">1차 결과는 수치상 통과(질감 1.03)였는데 눈으로 보면 플라스틱 피부였습니다. 마지막에 넣은 그레인이 사라진 모공 자리를 노이즈로 채워 지표를 속인 것입니다. 그래서 질감 지표를 "원본 모공과 얼마나 같은 모양인가"(상관 투영)로 바꾸고 3~8px 모공 대역을 추가했더니 0.75로 실패가 잡혔습니다. 코의 세로 이음새는 원인이 세 개였습니다. 빛 경계 위 힐링(밝기 +24), Hue/Sat이 채도를 빼면서 밝기를 올린 것(+3.5), 번들거림 제어가 하이라이트 속 질감까지 지운 것. 셋 다 엔진에서 고쳤습니다. 회색 홍채는 흰자 마스크가 갈색 홍채까지 잡아서였고, 눈 × 밝은 영역으로 좁혔습니다.</p>
+      <div class="nums"><span class="num">모공 대역 질감 <b>0.91</b></span><span class="num">외래 노이즈 0.48</span><span class="num">피부 색상각 53.3°</span></div>
+    </div>
+  </section>
+
+  <!-- bold -->
+  <section class="case" id="bold" aria-labelledby="h-bold">
+    <div class="media">
+      <div class="ba" style="--cut:50%"><img src="img/i_before.jpg" alt="튤립 원본 4:5"><div class="after"><img src="img/i_after.jpg" alt="튤립 진한 보정"></div><div class="bar"></div><span class="tag l">전</span><span class="tag r">후</span><input type="range" min="0" max="100" value="50" aria-label="진한 튤립 전후 비교 위치" data-ba></div>
+      <div class="trio">
+        <figure><img src="img/i_before.jpg" alt="원본" loading="lazy"><figcaption>원본</figcaption></figure>
+        <figure><img src="img/i_natural.jpg" alt="자연스러운 버전" loading="lazy"><figcaption>자연스러운 버전 (아래 사례)</figcaption></figure>
+        <figure><img src="img/i_after.jpg" alt="진한 버전" loading="lazy"><figcaption>진한 버전</figcaption></figure>
+      </div>
+    </div>
+    <div class="notes">
+      <span class="genre">마스킹 · 로우키</span>
+      <h2 id="h-bold">같은 마스크, 세 배 강하게</h2>
+      <p class="problem">자연스러운 버전보다 훨씬 강하게: 꽃 한 송이만 빛을 받고 나머지는 어둠 속으로.</p>
+      <h3>한 일</h3>
+      <ol>
+        <li>4:5로 크롭해 꽃을 중심에</li>
+        <li>배경을 로우키로 (중간톤 128 → 78), 채도 −60%</li>
+        <li>경쟁 튤립은 채도 −50%에 그림자 쪽으로 눌러 실루엣만</li>
+        <li>꽃 주변 원형 × 중간톤에 빛 번짐 (+22)</li>
+        <li>꽃: 바이브런스 +40%, 주황 채도 +20%, 꽃잎 국소 대비 0.5, 밝은 곳은 더 밝게(꽃 × 밝은 영역), 어두운 곳은 더 깊게(꽃 × 어두운 영역)</li>
+        <li>강한 비네트, 그림자 청록 · 하이라이트 웜 그레이딩</li>
+      </ol>
+      <h3>작업 중 고친 것</h3>
+      <p class="judge">크롭을 먼저 하면서 마스크 좌표가 원본 기준으로 남아 꽃 가운데만 선택되는 버그가 났고(바깥 꽃잎이 회색), 좌표를 크롭 프레임으로 변환해 고쳤습니다. 이어서 GrabCut이 뒤 튤립 일부를 사각형으로 끌고 들어와 배경 점 4개를 추가해 막았습니다.</p>
+    </div>
+  </section>
 
   <!-- 0 -->
   <section class="case" id="tulip" aria-labelledby="h-tulip">
@@ -245,7 +306,7 @@ footer.credits a { color: inherit; }
 
   <footer class="credits">
     <span class="edge">photo credits · Unsplash license</span>
-    <span>튤립 <a href="https://unsplash.com/photos/-So60UAgCtU">Leigh Kendell</a> · 해변 <a href="https://unsplash.com/photos/RL0l7Zk5PxU">Beto Galetto</a> · 등대 <a href="https://unsplash.com/photos/WO4bxwzHRe8">Good Free Photos</a> · 인물 <a href="https://unsplash.com/photos/LyeduBb2Auk">Roksolana Zasiadko</a> · 건축 <a href="https://unsplash.com/photos/d6ebY-faOO0">Vadim Sherbakov</a> · 커피 <a href="https://unsplash.com/photos/TYIzeCiZ_60">Karl Fredrickson</a></span>
+    <span>피부 Unsplash 이미지 photo-1500648767791 · 튤립 <a href="https://unsplash.com/photos/-So60UAgCtU">Leigh Kendell</a> · 해변 <a href="https://unsplash.com/photos/RL0l7Zk5PxU">Beto Galetto</a> · 등대 <a href="https://unsplash.com/photos/WO4bxwzHRe8">Good Free Photos</a> · 인물 <a href="https://unsplash.com/photos/LyeduBb2Auk">Roksolana Zasiadko</a> · 건축 <a href="https://unsplash.com/photos/d6ebY-faOO0">Vadim Sherbakov</a> · 커피 <a href="https://unsplash.com/photos/TYIzeCiZ_60">Karl Fredrickson</a></span>
     <span>원본은 Lorem Picsum이 다시 압축해 보낸 파일이라, 실제 원본보다 화질이 낮습니다.</span>
   </footer>
 </div>
