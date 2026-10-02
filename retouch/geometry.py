@@ -137,3 +137,42 @@ def detect_tilt(img: np.ndarray, max_angle: float = 12.0) -> dict:
     conf = float(weights[near].sum() / weights.sum())
     # A line tilted by +dev (clockwise on screen, y down) is fixed by rotating CCW by +dev.
     return {"rotate": round(median, 2), "confidence": round(conf, 2), "segments": int(len(angs))}
+
+
+def detect_horizon(img: np.ndarray, strips: int = 48, band: tuple[float, float] = (0.12, 0.88)) -> dict:
+    """Find a soft horizon (sea/sky, land/sky) as the strongest vertical luminance edge in each
+    vertical strip, then fit a line robustly. Returns the CCW rotation that levels it."""
+    h, w = img.shape[:2]
+    s = 1200 / max(h, w)
+    small = cv2.resize(img, (int(w * s), int(h * s)), interpolation=cv2.INTER_AREA) if s < 1 else img
+    L = cv2.cvtColor(np.clip(small, 0, 1).astype(np.float32), cv2.COLOR_RGB2Lab)[..., 0]
+    L = cv2.GaussianBlur(L, (0, 0), 2.0)
+    gy = np.abs(cv2.Sobel(L, cv2.CV_32F, 0, 1, ksize=5))
+    sh, sw = L.shape
+    y0, y1 = int(band[0] * sh), int(band[1] * sh)
+    xs, ys, ws = [], [], []
+    for i in range(strips):
+        a, b = int(i * sw / strips), int((i + 1) * sw / strips)
+        prof = gy[y0:y1, a:b].mean(1)
+        j = int(prof.argmax())
+        xs.append((a + b) / 2); ys.append(y0 + j); ws.append(float(prof[j]))
+    xs, ys, ws = np.array(xs), np.array(ys, float), np.array(ws)
+    best = None
+    rng = np.random.default_rng(0)
+    for _ in range(300):  # RANSAC on strip peaks
+        i, j = rng.choice(len(xs), 2, replace=False)
+        if xs[i] == xs[j]:
+            continue
+        m = (ys[j] - ys[i]) / (xs[j] - xs[i])
+        c = ys[i] - m * xs[i]
+        inl = np.abs(ys - (m * xs + c)) < max(1.5, sh * 0.0025)
+        score = ws[inl].sum() * (inl.sum() ** 0.5)   # favour long, consistent runs over islands
+        if best is None or score > best[0]:
+            best = (score, inl)
+    if best is None:
+        return {"rotate": 0.0, "confidence": 0.0}
+    inl = best[1]
+    m, c = np.polyfit(xs[inl], ys[inl], 1, w=ws[inl])
+    ang = math.degrees(math.atan(m))
+    return {"rotate": round(float(ang), 2), "confidence": round(float(inl.mean()), 2),
+            "y_at_center": round(float((m * sw / 2 + c) / sh), 3)}

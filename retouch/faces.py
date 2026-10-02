@@ -36,8 +36,12 @@ def detect(img: np.ndarray, score: float = 0.7) -> list[dict]:
     small = cv2.resize(img, (int(w * s), int(h * s)), interpolation=cv2.INTER_AREA) if s < 1 else img
     bgr = cv2.cvtColor((np.clip(small, 0, 1) * 255).astype(np.uint8), cv2.COLOR_RGB2BGR)
     sh, sw = bgr.shape[:2]
-    det = cv2.FaceDetectorYN.create(str(YUNET), "", (sw, sh), score, 0.3, 50)
-    _, faces = det.detect(bgr)
+    faces = None
+    for thr in (score, 0.5, 0.35):   # partial or turned faces score lower; retry before giving up
+        det = cv2.FaceDetectorYN.create(str(YUNET), "", (sw, sh), thr, 0.3, 50)
+        _, faces = det.detect(bgr)
+        if faces is not None and len(faces):
+            break
     out = []
     for f in faces if faces is not None else []:
         x, y, fw, fh = f[:4]
