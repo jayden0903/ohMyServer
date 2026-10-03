@@ -212,10 +212,21 @@ details summary { cursor: pointer; font-size: 13px; color: var(--muted); }
     const full = prompt + `
 
 답 형식: 먼저 한국어로 짧은 줄 4~8개(관찰한 것, 무엇을 왜 할지)를 쓰고, 그다음 줄에 <<<JSON 을 쓰고 JSON 하나를 쓴 뒤 JSON>>> 로 끝내라.`;
-    const r = await S.sample(full, {
-      images: S.canImages ? images : undefined, modelTier: $("tier").value, cache: false,
+    const opts = (withImg) => ({
+      images: withImg ? images : undefined, modelTier: $("tier").value, cache: false,
       onText: ({ text }) => { box.textContent = text.split("<<<JSON")[0].trim(); if (text.includes("<<<JSON")) ent.sub("레시피 작성 중…"); },
     });
+    let r;
+    if (S.canImages !== false) {
+      try { r = await S.sample(full, opts(true)); S.canImages = true; }
+      catch (e) {
+        if (e && (e.code === "images_unavailable" || e.code === "image_rejected")) {
+          S.canImages = false;
+          $("info").textContent = `Claude에게 이미지를 보내지 못해(${e.code}) 엔진의 수치 묘사만으로 판단해요.`;
+          r = await S.sample(full.replace(/이미지 [12]은[^.]*\./g, ""), opts(false));
+        } else throw e;
+      }
+    } else r = await S.sample(full, opts(false));
     const t = r.text;
     box.textContent = t.split("<<<JSON")[0].trim();
     let j = t.includes("<<<JSON") ? t.split("<<<JSON")[1].split("JSON>>>")[0] : t.slice(t.indexOf("{"), t.lastIndexOf("}") + 1);
@@ -269,6 +280,7 @@ ${PRINCIPLES}
 엔진 분석(JSON): ${JSON.stringify(S.analysis).slice(0, 12000)}
 ${S.steps ? "현재 레시피(이걸 고쳐서 새 레시피 전체를 내라): " + JSON.stringify(S.steps).slice(0, 12000) : ""}
 ${OPS}
+이미지를 못 받으면 analysis.describe(4x4 격자별 밝기 L·색 a/b·색상각·채도·엣지, 하늘 비율, 밝기 히스토그램)로 장면을 머릿속에 그려서 판단하라. 얼굴 위치는 faces.box/landmarks.
 JSON 형식: {"steps":[...]}`;
   }
   function reviewPrompt() {
@@ -278,6 +290,9 @@ JSON 형식: {"steps":[...]}`;
 ${PRINCIPLES}
 현재 레시피: ${JSON.stringify(S.steps).slice(0, 12000)}
 ${OPS}
+이미지를 못 받으면 원본 analysis.describe와 결과 describe(수치 검사의 describe)를 격자별로 비교하라.
+원본 묘사: ${JSON.stringify((S.analysis || {}).describe || {}).slice(0, 5000)}
+결과 묘사: ${JSON.stringify(S.lastDescribe || {}).slice(0, 5000)}
 결함(헤일로, 색 틀어짐, 과보정, 플라스틱 피부, 마스크 경계, 너무 약함/강함)을 찾아라. 짧은 줄에는 평가 점수(10점 만점)와 문제점을 써라.
 JSON 형식: 고칠 게 없으면 {"ok":true,"score":숫자}, 고칠 게 있으면 {"ok":false,"score":숫자,"steps":[수정한 레시피 전체]}.`;
   }
@@ -286,7 +301,7 @@ JSON 형식: 고칠 게 없으면 {"ok":true,"score":숫자}, 고칠 게 있으�
     const ent = entry(`엔진 렌더링 · ${label}`, `${steps.length}단계 적용`);
     try {
       const { json, image } = await tool("render", { job_id: S.job, recipe_json: JSON.stringify({ steps }) });
-      S.steps = steps; S.metrics = json && json.metrics;
+      S.steps = steps; S.metrics = json && json.metrics; S.lastDescribe = json && json.describe;
       S.afterBlob = b64ToBlob(image.data, image.mimeType || "image/jpeg");
       const url = URL.createObjectURL(S.afterBlob);
       S.versions.push({ label, url, steps, metrics: S.metrics, blob: S.afterBlob });
@@ -410,9 +425,10 @@ JSON 형식: 고칠 게 없으면 {"ok":true,"score":숫자}, 고칠 게 있으�
     S.mcp = mcp; S.sample = sample; S.downloads = downloads;
     if (!mcp) { $("err").textContent = `이 화면에서는 서버 엔진("${SERVER}")에 연결할 수 없어요.`; return; }
     if (!sample) { $("err").textContent = "이 화면에서는 Claude를 부를 수 없어요."; return; }
-    try { const lim = await sample.limits(); S.canImages = !!(lim && lim.images); } catch { S.canImages = false; }
+    // limits() is advisory: when it reports no images we still try once, and fall back on rejection
+    try { const lim = await sample.limits(); S.canImages = lim && lim.images ? true : "try"; } catch { S.canImages = "try"; }
     try { const lt = await mcp.listTools(); S.fileArgs = !!lt.fileArgs; } catch {}
-    if (!S.canImages) $("info").textContent = "이 화면에서는 Claude에게 이미지를 보낼 수 없어 수치만으로 판단해요.";
+    if (S.canImages === "try") $("info").textContent = "이미지 전송 가능 여부를 첫 판단 때 확인해요.";
     $("go").disabled = !S.file;
   })();
 })();

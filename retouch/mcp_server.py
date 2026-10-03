@@ -59,6 +59,40 @@ def _jpeg(img: np.ndarray, max_side: int, quality: int = 85) -> bytes:
     return buf.getvalue()
 
 
+def describe(img: np.ndarray, n: int = 4) -> dict:
+    """Text stand-in for eyes: an n x n grid of tone/colour/texture per cell, plus global facts.
+    Lab: L 0..100, a+ red / a- green, b+ yellow / b- blue. 'hue' = Lab hue angle in degrees."""
+    import cv2
+    from . import color as C
+    h, w = img.shape[:2]
+    s = 800 / max(h, w)
+    small = cv2.resize(img, (max(1, int(w * s)), max(1, int(h * s))), interpolation=cv2.INTER_AREA)
+    lab = C.rgb_to_lab(small)
+    hsv = C.rgb_to_hsv(small)
+    gray = (C.luminance(small) * 255).astype(np.uint8)
+    edges = cv2.Canny(gray, 60, 150) > 0
+    sh, sw = gray.shape
+    rows = []
+    for gy in range(n):
+        row = []
+        for gx in range(n):
+            ys, xs = slice(gy * sh // n, (gy + 1) * sh // n), slice(gx * sw // n, (gx + 1) * sw // n)
+            L, a, b = (lab[ys, xs, i] for i in range(3))
+            hue = (np.degrees(np.arctan2(b.mean(), a.mean())) + 360) % 360
+            row.append({"L": round(float(L.mean())), "Lp5_p95": [round(float(np.percentile(L, 5))), round(float(np.percentile(L, 95)))],
+                        "a": round(float(a.mean()), 1), "b": round(float(b.mean()), 1), "hue": round(float(hue)),
+                        "sat": round(float(hsv[ys, xs, 1].mean()), 2), "edges": round(float(edges[ys, xs].mean()), 3)})
+        rows.append(row)
+    try:
+        from . import masks as M
+        sky = float(M.sky(small, refine=0).mean())
+    except Exception:
+        sky = None
+    hist = np.histogram(lab[..., 0], bins=10, range=(0, 100))[0]
+    return {"grid": rows, "grid_note": f"{n}x{n}, row 0 = top", "sky_fraction": None if sky is None else round(sky, 3),
+            "L_histogram_10bins_pct": [round(float(v) * 100 / hist.sum(), 1) for v in hist]}
+
+
 def _cleanup() -> None:
     now = time.time()
     for d in JOBS.iterdir():
@@ -126,6 +160,7 @@ def analyze(job_id: str) -> list:
     rep["tones"] = {k: [round(float(lab[..., 1][s].mean()), 1), round(float(lab[..., 2][s].mean()), 1)]
                     for k, s in (("shadows_ab", L < 30), ("mids_ab", (L >= 30) & (L < 65)), ("highs_ab", L >= 65))
                     if s.any()}
+    rep["describe"] = describe(img)
     rep["clip_pct"] = {"high": round(float((img.max(-1) > 0.995).mean() * 100), 2),
                        "low": round(float((img.min(-1) < 0.005).mean() * 100), 2)}
     (d / "analysis.json").write_text(json.dumps(rep, default=lambda o: o.item() if hasattr(o, "item") else str(o)))
@@ -149,7 +184,7 @@ def render(job_id: str, recipe_json: str, preview_px: int = 1400) -> list:
     (d / "recipe.json").write_text(json.dumps(steps, ensure_ascii=False))
     img, _ = IO.load(out / "final.jpg")
     return [json.dumps({"metrics": summ["metrics"], "output_size": summ["output_size"],
-                        "seconds": summ["seconds"]}, ensure_ascii=False),
+                        "seconds": summ["seconds"], "describe": describe(img)}, ensure_ascii=False),
             Image(data=_jpeg(img, preview_px), format="jpeg")]
 
 
