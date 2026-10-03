@@ -54,6 +54,8 @@ ADJUST = {
     "vibrance": lambda img, s, m: O.vibrance(img, s.get("amount", 0), s.get("protect_skin", True)),
     "hue_sat": lambda img, s, m: O.hue_sat(img, s["center"], s.get("width", 30), s.get("soft", 20),
                                            s.get("hue", 0), s.get("sat", 0), s.get("light", 0)),
+    "mono": lambda img, s, m: O.mono(img, s.get("r", 0.4), s.get("g", 0.4), s.get("b", 0.2), s.get("tone"),
+                                     s.get("tone_amount", 0.0)),
     "lab_shift": lambda img, s, m: O.lab_shift(img, s.get("da", 0), s.get("db", 0), s.get("dl", 0)),
     "match_skin": lambda img, s, m: O.match_skin(img, m, s.get("hue", 58), s.get("chroma"), s.get("strength", 0.5)),
     "color_fix": lambda img, s, m: O.color_fix(img, m, s.get("sample"), s.get("rgb"), s.get("mode", "color"),

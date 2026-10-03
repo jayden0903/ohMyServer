@@ -64,6 +64,10 @@ figcaption { font-size: 12.5px; color: var(--muted); }
 .trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 @media (max-width: 640px) { .trio { grid-template-columns: 1fr; } }
 .bad figcaption { color: var(--accent); }
+.looks-bar { display: flex; flex-wrap: wrap; gap: 6px; }
+.looks-bar button { font: inherit; font-size: 13px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.looks-bar button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.looks-bar button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .notes { display: grid; gap: 14px; min-width: 0; align-content: start; }
 .genre { justify-self: start; font-family: var(--f-mono); font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; border: 1px solid currentColor; border-radius: 999px; padding: 2px 10px; color: var(--muted); }
 .notes h2 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.3; text-wrap: balance; }
@@ -83,11 +87,12 @@ footer.credits a { color: inherit; }
 
 <div class="wrap">
   <header class="top">
-    <span class="edge">non-generative retouching · 9 cases</span>
+    <span class="edge">non-generative retouching · 10 cases</span>
     <h1>보정 사례집<span class="mark">.</span></h1>
-    <p class="lede">무료 사진 아홉 장을 생성형 AI 없이 회전, 크롭, 커브, 마스크, 닷지&amp;번만으로 보정했습니다. 각 사례에 무엇이 문제였고, 무엇을 했고, 일부러 무엇을 하지 않았는지 적었습니다. 사진 위 슬라이더를 좌우로 끌면 전후를 비교할 수 있어요.</p>
+    <p class="lede">무료 사진 열 장을 생성형 AI 없이 회전, 크롭, 커브, 마스크, 닷지&amp;번만으로 보정했습니다. 각 사례에 무엇이 문제였고, 무엇을 했고, 일부러 무엇을 하지 않았는지 적었습니다. 사진 위 슬라이더를 좌우로 끌면 전후를 비교할 수 있어요.</p>
   </header>
   <nav class="toc" aria-label="사례 목록">
+    <a href="#looks">강 · 세 가지 룩</a>
     <a href="#moody">풍경 · 무드 그레이딩</a>
     <a href="#skin">인물 · 피부 극한</a>
     <a href="#bold">튤립 · 진하게</a>
@@ -98,6 +103,48 @@ footer.credits a { color: inherit; }
     <a href="#arch">건축 · 대칭과 톤</a>
     <a href="#coffee">커피 · 제품 무드</a>
   </nav>
+
+  <!-- looks -->
+  <section class="case" id="looks" aria-labelledby="h-looks">
+    <div class="media">
+      <div class="looks-bar" role="group" aria-label="룩 선택">
+        <button type="button" data-look="cinema" aria-pressed="true">시네마틱</button>
+        <button type="button" data-look="bw" aria-pressed="false">흑백 파인아트</button>
+        <button type="button" data-look="gold" aria-pressed="false">골든 아워</button>
+      </div>
+      <div class="ba" style="--cut:50%"><img src="img/k_before.jpg" alt="안개 낀 강 원본"><div class="after"><img id="look-img" src="img/k_cinema.jpg" alt="선택한 룩 결과"></div><div class="bar"></div><span class="tag l">전</span><span class="tag r">후</span><input type="range" min="0" max="100" value="50" aria-label="룩 전후 비교 위치" data-ba></div>
+      <div class="trio">
+        <figure><img src="img/k_cinema.jpg" alt="시네마틱" loading="lazy"><figcaption>시네마틱</figcaption></figure>
+        <figure><img src="img/k_bw.jpg" alt="흑백" loading="lazy"><figcaption>흑백 파인아트</figcaption></figure>
+        <figure><img src="img/k_gold.jpg" alt="골든 아워" loading="lazy"><figcaption>골든 아워</figcaption></figure>
+      </div>
+    </div>
+    <div class="notes">
+      <span class="genre">그레이딩 · 룩</span>
+      <h2 id="h-looks">같은 사진, 완전히 다른 세 장면</h2>
+      <p class="problem">안개 낀 강가에 선 사람. 원본은 무난하지만 인상이 약합니다. 같은 원본으로 성격이 정반대인 룩 세 가지를 만들었습니다.</p>
+      <h3>시네마틱</h3>
+      <ol>
+        <li>로우키 커브(중간톤 128 → 82)로 전체를 가라앉히고 자연색 −55%</li>
+        <li>그림자 청록, 하이라이트 주황을 강하게 (영화 색보정의 보색 대비)</li>
+        <li>안개는 차가운 시안으로 빛나게, 물은 전기 청록, 급류 하이라이트만 따뜻하게</li>
+        <li>사람은 GrabCut으로 따서 더 깊은 실루엣, 무거운 비네트, 필름 그레인</li>
+      </ol>
+      <h3>흑백 파인아트</h3>
+      <ol>
+        <li>채널 믹서 흑백에 빨강 필터 효과(R 85%): 초록 숲과 물은 어둡게, 안개는 밝게</li>
+        <li>강한 S커브와 구조 대비, 급류만 하얗게(물 × 밝은 영역), 사람은 검게</li>
+        <li>셀레늄 톤으로 살짝 보랏빛, 그레인</li>
+      </ol>
+      <h3>골든 아워</h3>
+      <ol>
+        <li>전체 화이트밸런스를 따뜻하게, 오른쪽 위에서 들어오는 빛을 그라데이션 마스크로 그림</li>
+        <li>안개를 빛나는 역광 헤이즈로, 초록은 올리브 골드로</li>
+        <li>물은 차가운 청록을 남겨 보색 대비, 하이라이트 주황 · 그림자 자줏빛</li>
+      </ol>
+      <p class="judge">세 룩 모두 같은 엔진과 같은 마스크 도구로 레시피만 바꾼 것입니다. 골든 아워의 햇빛은 실제 빛이 아니라 색과 밝기 그라데이션으로 표현한 것이라, 그림자 방향까지 바뀌지는 않습니다.</p>
+    </div>
+  </section>
 
   <!-- moody -->
   <section class="case" id="moody" aria-labelledby="h-moody">
@@ -339,12 +386,18 @@ footer.credits a { color: inherit; }
 
   <footer class="credits">
     <span class="edge">photo credits · Unsplash license</span>
-    <span>스카이섬 <a href="https://unsplash.com/photos/Kt5hRENuotI">Andrew Ridley</a> · 피부 Unsplash 이미지 photo-1500648767791 · 튤립 <a href="https://unsplash.com/photos/-So60UAgCtU">Leigh Kendell</a> · 해변 <a href="https://unsplash.com/photos/RL0l7Zk5PxU">Beto Galetto</a> · 등대 <a href="https://unsplash.com/photos/WO4bxwzHRe8">Good Free Photos</a> · 인물 <a href="https://unsplash.com/photos/LyeduBb2Auk">Roksolana Zasiadko</a> · 건축 <a href="https://unsplash.com/photos/d6ebY-faOO0">Vadim Sherbakov</a> · 커피 <a href="https://unsplash.com/photos/TYIzeCiZ_60">Karl Fredrickson</a></span>
+    <span>강 <a href="https://unsplash.com/photos/Ixp4YhCKZkI">Steve Carter</a> · 스카이섬 <a href="https://unsplash.com/photos/Kt5hRENuotI">Andrew Ridley</a> · 피부 Unsplash 이미지 photo-1500648767791 · 튤립 <a href="https://unsplash.com/photos/-So60UAgCtU">Leigh Kendell</a> · 해변 <a href="https://unsplash.com/photos/RL0l7Zk5PxU">Beto Galetto</a> · 등대 <a href="https://unsplash.com/photos/WO4bxwzHRe8">Good Free Photos</a> · 인물 <a href="https://unsplash.com/photos/LyeduBb2Auk">Roksolana Zasiadko</a> · 건축 <a href="https://unsplash.com/photos/d6ebY-faOO0">Vadim Sherbakov</a> · 커피 <a href="https://unsplash.com/photos/TYIzeCiZ_60">Karl Fredrickson</a></span>
     <span>원본은 Lorem Picsum이 다시 압축해 보낸 파일이라, 실제 원본보다 화질이 낮습니다.</span>
   </footer>
 </div>
 
 <script>
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-look]");
+  if (!b) return;
+  document.querySelectorAll("[data-look]").forEach((x) => x.setAttribute("aria-pressed", x === b ? "true" : "false"));
+  document.getElementById("look-img").src = "img/k_" + b.dataset.look + ".jpg";
+});
 document.addEventListener("input", (e) => {
   if (e.target.matches("[data-ba]")) e.target.closest(".ba").style.setProperty("--cut", e.target.value + "%");
 });

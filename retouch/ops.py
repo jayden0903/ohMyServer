@@ -151,6 +151,21 @@ def hue_sat(img: np.ndarray, center: float, width: float = 30.0, soft: float = 2
     return out
 
 
+def mono(img: np.ndarray, r: float = 0.4, g: float = 0.4, b: float = 0.2, tone: list | None = None,
+         tone_amount: float = 0.0) -> np.ndarray:
+    """Channel Mixer black & white (weights like colour filters on film: red filter = high r,
+    darkens greens and blue water). Optional split tone colour (rgb 0..255) for a toned print."""
+    wsum = r + g + b
+    lin = _to_linear(img)
+    y = (lin[..., 0] * r + lin[..., 1] * g + lin[..., 2] * b) / max(wsum, 1e-6)
+    out = np.repeat(_to_srgb(np.clip(y, 0, 1))[..., None], 3, -1).astype(np.float32)
+    if tone and tone_amount:
+        t = np.array(tone, np.float32) / 255.0
+        L = C.luminance(out)
+        out = C.replace_luminance(out + tone_amount * (t - out.mean(-1, keepdims=True)) * 1.0, L)
+    return np.clip(out, 0, 1)
+
+
 def lab_shift(img: np.ndarray, da: float = 0.0, db: float = 0.0, dl: float = 0.0) -> np.ndarray:
     lab = C.rgb_to_lab(img)
     lab[..., 0] += dl
