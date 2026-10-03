@@ -122,14 +122,70 @@ def sky(img: np.ndarray, sat_max: float = 0.35, refine: int = 10) -> np.ndarray:
     # mask reaches the real ridge line instead of stopping short (which leaves a bright rim).
     bright = ((u8 >= t * 0.9) & ~((C.hue_distance(hsv[..., 0], 100) < 50) & (hsv[..., 1] > 0.08))).astype(np.uint8)
     k3 = np.ones((3, 3), np.uint8)
-    for _ in range(60):
+    for _ in range(25):   # only re-fill the strip the texture test removed, never deep into land
         grown = cv2.dilate(m, k3) & bright
         if np.array_equal(grown, m):
             break
         m = grown
     m = m.astype(np.float32)
     m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7)))
+    if refine == 0:
+        return snap_skyline(m, img, soft=True)
     return guided_refine(m, img, radius=refine, eps=2e-4)
+
+
+def snap_skyline(m: np.ndarray, img: np.ndarray, window: int = 24, aa: float = 0.7,
+                 soft: bool = False, fog_px: float = 10.0) -> np.ndarray:
+    """Pixel-accurate sky edge: per column, take the top-connected sky run from the rough mask,
+    then move its lower end to the strongest bright-to-dark step of luminance within +-window px.
+    Above the edge is 1, below 0, with a sub-pixel anti-aliased step (no soft rim)."""
+    h, w = m.shape
+    L = C.gaussian(C.luminance(img), 0.8)
+    dy = np.zeros_like(L)
+    dy[1:-1] = L[:-2] - L[2:]                       # positive where brighter above than below
+    hard = m > 0.5
+    first_land = np.where(hard.all(0), h, np.argmin(hard, axis=0))   # first non-sky row per column
+    edge = first_land.astype(np.float32)
+    strength = np.zeros(w, np.float32)
+    for x in range(w):
+        y0 = first_land[x]
+        if y0 <= 0 or y0 >= h:
+            continue
+        # search from well above the rough line: the rough mask tends to leak INTO land
+        a, b = max(1, y0 - 3 * window), min(h - 1, y0 + window)
+        seg = dy[a:b, x]
+        j = int(np.argmax(seg))
+        strong = np.nonzero(seg > max(0.5 * seg[j], 0.03))[0]
+        if len(strong):
+            j = int(strong[0]) + int(np.argmax(seg[strong[0]:strong[0] + 3]))   # first strong step
+        total = float(L[a, x] - L[b - 1, x])
+        # sharpness: how much of the whole sky->land drop happens at the step itself.
+        # A ridge drops at once (~1); fog drifts over many pixels (~0.1).
+        strength[x] = seg[j] * float(np.clip((seg[j] / max(total, 1e-3) - 0.15) / 0.25, 0, 1))
+        if seg[j] > 0.02:                           # a real step; foggy edges keep the rough line
+            edge[x] = a + j + 0.5
+    # spikes: single columns that snapped to a deeper step (bright grass, fog) -- replace any
+    # column that sits well below its neighbourhood with the neighbourhood's line
+    from scipy.ndimage import median_filter
+    ref = median_filter(edge, size=81, mode="nearest")
+    edge = np.minimum(edge, ref + 1.5)   # no downward notches into the land; upward peaks stay
+    edge = median_filter(edge, size=5, mode="nearest")
+    yy = np.arange(h, dtype=np.float32)[:, None]
+    out = np.clip(edge[None, :] - yy + 0.5, 0, 1)    # 1 above the edge, linear over one pixel
+    # keep sky that the rough mask found below the first edge (gaps between peaks) as is
+    # Sky is treated as one run from the top per column: pockets the rough mask found lower down
+    # are almost always bright land the region-growing leaked into, not sky.
+    out = np.clip(C.gaussian(out, aa), 0, 1)
+    if not soft:
+        return out
+    # Foggy columns get the same cleaned skyline, just feathered wide (vertical blur only), so
+    # no blocks from the rough mask can leak back in.
+    soft = C.gaussian(out, fog_px)
+    # Confidence per column: a clear sky/land step gets the hard edge, fog keeps the soft mask
+    conf = np.clip((strength - 0.02) / 0.05, 0, 1)
+    conf = cv2.GaussianBlur(conf.reshape(1, -1), (0, 0), 30).ravel()
+    conf = np.where(first_land >= h, 0.0, conf)
+    return np.clip(conf[None, :] * out + (1 - conf[None, :]) * soft, 0, 1)
 
 
 # ---- refinement -----------------------------------------------------------------------
