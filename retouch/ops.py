@@ -78,10 +78,18 @@ def shadows_highlights(img: np.ndarray, shadows: float = 0.0, highlights: float 
     return C.replace_luminance(img, newL)
 
 
-def local_contrast(img: np.ndarray, amount: float = 0.2, sigma: float = 40.0) -> np.ndarray:
-    """Clarity-like midtone contrast on L (keep small for portraits)."""
+def local_contrast(img: np.ndarray, amount: float = 0.2, sigma: float = 40.0,
+                   support: np.ndarray | None = None) -> np.ndarray:
+    """Clarity-like midtone contrast on L (keep small for portraits).
+    With `support` (a mask), the local average is taken only inside the mask, so a dark sky
+    next to bright land cannot push a bright rim (halo) onto the land edge, and vice versa."""
     L = C.luminance(img)
-    detail = L - C.gaussian(L, sigma)
+    if support is None:
+        detail = L - C.gaussian(L, sigma)
+    else:
+        wgt = (support > 0.5).astype(np.float32)
+        base = C.gaussian(L * wgt, sigma) / np.maximum(C.gaussian(wgt, sigma), 1e-4)
+        detail = (L - base) * wgt
     mid = 1 - np.abs(L - 0.5) * 2
     return C.replace_luminance(img, L + amount * detail * (0.4 + 0.6 * mid))
 

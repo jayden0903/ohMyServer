@@ -99,6 +99,39 @@ def linear_gradient(shape: tuple[int, int], p0: list[float], p1: list[float]) ->
     return 1.0 - C.smoothstep(0.0, 1.0, t)
 
 
+def sky(img: np.ndarray, sat_max: float = 0.35, refine: int = 10) -> np.ndarray:
+    """Sky selection without generative tools: bright, low-texture regions connected to the top
+    edge (Otsu threshold on the upper half), then edge-refined with a guided filter so ridge
+    lines stay crisp. Works for overcast and blue skies."""
+    h, w = img.shape[:2]
+    L = C.luminance(img)
+    hsv = C.rgb_to_hsv(img)
+    u8 = (np.clip(C.gaussian(L, 2), 0, 1) * 255).astype(np.uint8)
+    t, _ = cv2.threshold(u8[: h // 2], 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    tex = cv2.Laplacian(C.gaussian(L, 1.5), cv2.CV_32F)
+    tex = C.gaussian(np.abs(tex), 6)
+    cand = (u8 >= t * 0.92) & ((hsv[..., 1] < sat_max) | (C.hue_distance(hsv[..., 0], 215) < 40)) \
+        & (tex < np.percentile(tex, 70)) \
+        & ~((C.hue_distance(hsv[..., 0], 100) < 50) & (hsv[..., 1] > 0.08))   # misty grass is not sky
+    cand = cv2.morphologyEx(cand.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
+    n, lab = cv2.connectedComponents(cand)
+    top = set(np.unique(lab[0, :])) - {0}
+    m = np.isin(lab, list(top)).astype(np.uint8)
+    # The texture test erodes the sky next to textured land (blurred texture bleeds over).
+    # Grow it back by morphological reconstruction limited to bright, non-green pixels, so the
+    # mask reaches the real ridge line instead of stopping short (which leaves a bright rim).
+    bright = ((u8 >= t * 0.9) & ~((C.hue_distance(hsv[..., 0], 100) < 50) & (hsv[..., 1] > 0.08))).astype(np.uint8)
+    k3 = np.ones((3, 3), np.uint8)
+    for _ in range(60):
+        grown = cv2.dilate(m, k3) & bright
+        if np.array_equal(grown, m):
+            break
+        m = grown
+    m = m.astype(np.float32)
+    m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7)))
+    return guided_refine(m, img, radius=refine, eps=2e-4)
+
+
 # ---- refinement -----------------------------------------------------------------------
 def feather(m: np.ndarray, px: float) -> np.ndarray:
     return np.clip(C.gaussian(m.astype(np.float32), px), 0, 1)
@@ -218,6 +251,16 @@ def build(img: np.ndarray, spec: dict | None, ctx: dict | None = None) -> np.nda
         m *= gm
     if spec.get("minus"):                 # mask math: subtract another mask spec
         m *= 1.0 - build(img, spec["minus"], ctx)
+    if spec.get("sky"):
+        key = "sky"
+        if ctx is not None and key in ctx and ctx[key].shape == (h, w):
+            sm = ctx[key]
+        else:
+            opts = spec["sky"] if isinstance(spec["sky"], dict) else {}
+            sm = sky(img, **opts)
+            if ctx is not None:
+                ctx[key] = sm
+        m *= sm
     if spec.get("skin"):
         m *= skin(img, loose=spec.get("skin") == "loose")
     if spec.get("include"):

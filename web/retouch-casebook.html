@@ -83,11 +83,12 @@ footer.credits a { color: inherit; }
 
 <div class="wrap">
   <header class="top">
-    <span class="edge">non-generative retouching · 8 cases</span>
+    <span class="edge">non-generative retouching · 9 cases</span>
     <h1>보정 사례집<span class="mark">.</span></h1>
-    <p class="lede">무료 사진 여덟 장을 생성형 AI 없이 회전, 크롭, 커브, 마스크, 닷지&amp;번만으로 보정했습니다. 각 사례에 무엇이 문제였고, 무엇을 했고, 일부러 무엇을 하지 않았는지 적었습니다. 사진 위 슬라이더를 좌우로 끌면 전후를 비교할 수 있어요.</p>
+    <p class="lede">무료 사진 아홉 장을 생성형 AI 없이 회전, 크롭, 커브, 마스크, 닷지&amp;번만으로 보정했습니다. 각 사례에 무엇이 문제였고, 무엇을 했고, 일부러 무엇을 하지 않았는지 적었습니다. 사진 위 슬라이더를 좌우로 끌면 전후를 비교할 수 있어요.</p>
   </header>
   <nav class="toc" aria-label="사례 목록">
+    <a href="#moody">풍경 · 무드 그레이딩</a>
     <a href="#skin">인물 · 피부 극한</a>
     <a href="#bold">튤립 · 진하게</a>
     <a href="#tulip">튤립 · 마스크 7장</a>
@@ -97,6 +98,36 @@ footer.credits a { color: inherit; }
     <a href="#arch">건축 · 대칭과 톤</a>
     <a href="#coffee">커피 · 제품 무드</a>
   </nav>
+
+  <!-- moody -->
+  <section class="case" id="moody" aria-labelledby="h-moody">
+    <div class="media">
+      <div class="ba" style="--cut:50%"><img src="img/j_before.jpg" alt="흐린 날 평범한 원본"><div class="after"><img src="img/j_after.jpg" alt="무드 그레이딩 후"></div><div class="bar"></div><span class="tag l">전</span><span class="tag r">후</span><input type="range" min="0" max="100" value="50" aria-label="무드 그레이딩 전후 비교 위치" data-ba></div>
+      <div class="trio">
+        <figure><img src="img/j_sky.jpg" alt="하늘 마스크" loading="lazy"><figcaption>하늘 마스크 (밝기 + 질감 + 위쪽 연결 + 재성장)</figcaption></figure>
+        <figure class="bad"><img src="img/j_halo.jpg" alt="능선을 따라 밝은 테두리가 생긴 중간 결과" loading="lazy"><figcaption>중간 결과: 능선 헤일로</figcaption></figure>
+        <figure><img src="img/j_clean.jpg" alt="헤일로를 없앤 최종 능선" loading="lazy"><figcaption>최종: 헤일로 제거</figcaption></figure>
+      </div>
+    </div>
+    <div class="notes">
+      <span class="genre">풍경 · 무드 그레이딩</span>
+      <h2 id="h-moody">흐린 날을 극적인 날로</h2>
+      <p class="problem">흐린 날 하늘이 하얗게 날아가 밋밋하고, 초록이 너무 형광입니다. 참고 이미지처럼 청록 하늘과 금빛 산의 무드를 목표로 했습니다.</p>
+      <h3>한 일</h3>
+      <ol>
+        <li>하늘 마스크: 위쪽 가장자리와 이어진 밝고 매끈한 영역. 초록 안개는 제외</li>
+        <li>하늘: 어둡게 누르고(수평선 쪽은 점점 약하게), 큰 스케일과 작은 스케일 국소 대비로 구름 결을 끌어냄, 청록으로</li>
+        <li>땅: 초록을 금빛으로(색상 −36°), 따뜻하게, 이미 빛 받는 경사만 더 밝게(땅 × 밝은 영역)</li>
+        <li>빛 그리기: 능선 면은 닷지, 앞쪽 바위와 아래는 번. 원래 빛 방향을 따라감</li>
+        <li>먼 평지는 채도와 밝기를 낮추고 차갑게 해서 뒤로 물러나게 (대기 원근)</li>
+        <li>그림자 청록 · 하이라이트 주황 그레이딩, 비네트</li>
+      </ol>
+      <h3>작업 중 고친 것</h3>
+      <p class="judge">능선을 따라 밝은 테두리(헤일로)가 생겼습니다. 원인은 두 가지였습니다. 하늘 마스크의 질감 조건이 능선 옆 하늘 15~20px를 빼먹어 그 부분이 안 어두워진 것, 그리고 국소 대비가 경계 너머 어두운 하늘을 평균에 섞은 것. 하늘 마스크를 밝기 조건으로 능선까지 다시 키우고, 국소 대비를 마스크 안에서만 계산하도록 엔진을 고쳤습니다. 먼 평지가 베이지색으로 뜨던 것, 수평선의 어두운 띠도 고쳤습니다.</p>
+      <h3>참고 이미지와 다른 점</h3>
+      <p class="judge">참고 이미지의 오른쪽은 왼쪽과 산 모양과 위치가 다르고, 흐린 날에는 없는 강한 측광이 산을 비춥니다. 같은 사진을 보정한 것이 아니라 다른 사진이거나 합성으로 보입니다. 색과 무드는 보정으로 따라갈 수 있지만, 없는 햇빛과 극적인 구름을 만들어 내는 것은 생성 AI나 하늘 합성 영역이라 이 엔진은 하지 않습니다. 이 사례의 구름 결이 참고보다 덜한 이유도 원본 하늘에 구름 디테일이 거의 없기 때문입니다.</p>
+    </div>
+  </section>
 
   <!-- skin -->
   <section class="case" id="skin" aria-labelledby="h-skin">
@@ -306,7 +337,7 @@ footer.credits a { color: inherit; }
 
   <footer class="credits">
     <span class="edge">photo credits · Unsplash license</span>
-    <span>피부 Unsplash 이미지 photo-1500648767791 · 튤립 <a href="https://unsplash.com/photos/-So60UAgCtU">Leigh Kendell</a> · 해변 <a href="https://unsplash.com/photos/RL0l7Zk5PxU">Beto Galetto</a> · 등대 <a href="https://unsplash.com/photos/WO4bxwzHRe8">Good Free Photos</a> · 인물 <a href="https://unsplash.com/photos/LyeduBb2Auk">Roksolana Zasiadko</a> · 건축 <a href="https://unsplash.com/photos/d6ebY-faOO0">Vadim Sherbakov</a> · 커피 <a href="https://unsplash.com/photos/TYIzeCiZ_60">Karl Fredrickson</a></span>
+    <span>스카이섬 <a href="https://unsplash.com/photos/Kt5hRENuotI">Andrew Ridley</a> · 피부 Unsplash 이미지 photo-1500648767791 · 튤립 <a href="https://unsplash.com/photos/-So60UAgCtU">Leigh Kendell</a> · 해변 <a href="https://unsplash.com/photos/RL0l7Zk5PxU">Beto Galetto</a> · 등대 <a href="https://unsplash.com/photos/WO4bxwzHRe8">Good Free Photos</a> · 인물 <a href="https://unsplash.com/photos/LyeduBb2Auk">Roksolana Zasiadko</a> · 건축 <a href="https://unsplash.com/photos/d6ebY-faOO0">Vadim Sherbakov</a> · 커피 <a href="https://unsplash.com/photos/TYIzeCiZ_60">Karl Fredrickson</a></span>
     <span>원본은 Lorem Picsum이 다시 압축해 보낸 파일이라, 실제 원본보다 화질이 낮습니다.</span>
   </footer>
 </div>
