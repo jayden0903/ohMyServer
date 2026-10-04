@@ -117,8 +117,11 @@ def run(recipe: dict | str | Path, verbose: bool = True) -> dict:
         name = step.get("name", op)
         t = time.time()
         if op in GEOMETRY:
+            # geometry applies to the 'original' reference too, so a crop late in the stack (a final
+            # composition crop after the masks were placed) still compares like with like
+            same = base is img
             img = GEOMETRY[op](img, step)
-            base = img                       # geometry applies to the 'original' reference too
+            base = img if same else GEOMETRY[op](base, step)
             ctx["prob"] = None
         elif op in ADJUST:
             mask = M.build(img, step.get("mask"), ctx)
