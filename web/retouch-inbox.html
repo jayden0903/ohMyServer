@@ -71,7 +71,23 @@ button { font: inherit; cursor: pointer; border-radius: 4px; }
 .btn-ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); padding: 7px 12px; font-size: 13px; }
 .btn-ghost:hover { border-color: var(--ink); }
 .note { font-size: 12.5px; color: var(--muted); border-left: 3px solid var(--accent); padding: 6px 10px; background: var(--bg); border-radius: 0 4px 4px 0; }
-.err { color: var(--accent); font-size: 13px; min-height: 1em; }
+.err { color: var(--accent); font-size: 13px; min-height: 1em; white-space: pre-line; }
+.picks { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; }
+.pick { position: relative; aspect-ratio: 1 / 1; border-radius: 4px; overflow: hidden; background: var(--bg); border: 1px solid var(--line); }
+.pick img { width: 100%; height: 100%; object-fit: cover; display: block; max-width: 100%; }
+.pick .rm { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; border-radius: 50%; border: 0; background: rgba(0,0,0,.65); color: #fff; font-size: 13px; line-height: 22px; padding: 0; }
+.pick .st { position: absolute; left: 0; right: 0; bottom: 0; font-family: var(--f-mono); font-size: 10.5px; text-align: center; padding: 2px; background: rgba(0,0,0,.6); color: #fff; }
+.pick.failed { outline: 2px solid var(--accent); }
+.pick-sum { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; font-family: var(--f-mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.pick-sum button { background: none; border: 0; color: var(--muted); text-decoration: underline; font-size: 12px; padding: 0; }
+.prog { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.prog > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+.batch { display: grid; gap: 12px; border: 1px dashed var(--line); border-radius: var(--r); padding: 12px; }
+.batch-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; }
+.batch-title { font-weight: 600; font-size: 14.5px; }
+.batch-meta { font-family: var(--f-mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.batch-bar { flex-basis: 100%; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.batch-bar > i { display: block; height: 100%; background: var(--ok); }
 
 /* contact sheet */
 .sheet-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
@@ -124,12 +140,14 @@ footer.ref { margin-top: 36px; border-top: 1px solid var(--line); padding-top: 1
   <div class="grid">
     <section class="slip" aria-labelledby="slip-h">
       <h2 id="slip-h">원본 올리기</h2>
-      <p class="lede">사진을 올리고 요청을 적어 주세요. 생성형 AI 없이 커브, 마스크, 닷지&amp;번, 힐링으로만 보정합니다.</p>
+      <p class="lede">사진을 한 장 또는 여러 장(최대 20장) 올리고 요청을 적어 주세요. 여러 장은 한 묶음으로 같은 설정이 적용됩니다. 생성형 AI 없이 커브, 마스크, 닷지&amp;번, 힐링으로만 보정합니다.</p>
       <form id="f" novalidate>
         <div class="drop" id="drop">
-          <input type="file" id="file" accept="image/jpeg,image/png,image/webp" aria-label="사진 파일 선택">
-          <div class="hint" id="hint"><b>여기에 사진을 끌어 놓거나 눌러서 선택</b>JPG · PNG · WebP, 20MB 이하</div>
+          <input type="file" id="file" accept="image/jpeg,image/png,image/webp" multiple aria-label="사진 파일 선택 (여러 장 가능)">
+          <div class="hint" id="hint"><b>여기에 사진을 끌어 놓거나 눌러서 선택</b>여러 장 가능 · JPG · PNG · WebP · 장당 20MB 이하</div>
         </div>
+        <div class="picks" id="picks" hidden></div>
+        <div class="pick-sum" id="picksum" hidden></div>
         <div class="f">
           <span class="lbl">장르</span>
           <div class="chips" role="radiogroup" aria-label="장르">
@@ -166,6 +184,7 @@ footer.ref { margin-top: 36px; border-top: 1px solid var(--line); padding-top: 1
           <textarea id="notes" placeholder="예: 점과 주근깨는 남겨 주세요. 수평 맞춰 주시고 피부는 질감 살려서."></textarea>
         </label>
         <div class="err" id="err" role="alert"></div>
+        <div class="prog" id="prog" hidden><i id="progbar"></i></div>
         <button class="btn" id="go" type="submit" disabled>의뢰 넣기</button>
         <p class="note">올린 뒤 채팅에 <b>"올렸어"</b>라고 알려 주세요. 결과는 이 페이지에 전후 비교로 올라옵니다.</p>
       </form>
@@ -194,7 +213,8 @@ footer.ref { margin-top: 36px; border-top: 1px solid var(--line); padding-top: 1
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
-  const S = { db: null, assets: null, downloads: null, file: null, jobs: [], confirmDel: null };
+  const S = { db: null, assets: null, downloads: null, files: [], busy: false, jobs: [], confirmDel: null };
+  const MAX_FILES = 20;
   const GENRE = { portrait: "인물", beauty: "뷰티", fashion: "패션", product: "제품", landscape: "풍경" };
   const STRENGTH = { natural: "자연스럽게", standard: "표준", highend: "하이엔드" };
   const STATUS = { queued: ["대기", "queued"], working: ["보정 중", "working"], done: ["완료", "done"], error: ["확인 필요", "error"] };
@@ -208,24 +228,55 @@ footer.ref { margin-top: 36px; border-top: 1px solid var(--line); padding-top: 1
   const mb = (n) => (n / 1048576).toFixed(1) + "MB";
   const when = (iso) => { try { const d = new Date(iso); return d.toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
 
-  // ---- file pick ----
-  function pick(file) {
+  // ---- file pick (many) ----
+  const HINT = "<b>여기에 사진을 끌어 놓거나 눌러서 선택</b>여러 장 가능 · JPG · PNG · WebP · 장당 20MB 이하";
+  function pickMany(list) {
+    if (S.busy) return;
     $("err").textContent = "";
-    if (!file) return;
-    if (!OK_TYPES.includes(file.type)) { $("err").textContent = "JPG, PNG, WebP 파일만 올릴 수 있어요. RAW나 TIFF는 JPG로 내보낸 뒤 올려 주세요."; return; }
-    if (file.size > 20 * 1048576) { $("err").textContent = `파일이 ${mb(file.size)}입니다. 20MB 이하로 줄여서 올려 주세요.`; return; }
-    S.file = file;
-    const url = URL.createObjectURL(file);
-    $("hint").innerHTML = `<img src="${url}" alt="선택한 사진 미리보기"><div class="frame-no" style="margin-top:6px">${esc(file.name)} · ${mb(file.size)}</div>`;
+    const skipped = [];
+    for (const file of Array.from(list || [])) {
+      if (!OK_TYPES.includes(file.type)) { skipped.push(`${file.name}: JPG, PNG, WebP만 가능 (RAW·TIFF는 JPG로 내보내 주세요)`); continue; }
+      if (file.size > 20 * 1048576) { skipped.push(`${file.name}: ${mb(file.size)}, 20MB 이하로 줄여 주세요`); continue; }
+      if (S.files.some((x) => x.file.name === file.name && x.file.size === file.size)) continue;
+      if (S.files.length >= MAX_FILES) { skipped.push(`한 번에 ${MAX_FILES}장까지 올릴 수 있어요. 나머지는 다음 묶음으로 올려 주세요.`); break; }
+      S.files.push({ file, url: URL.createObjectURL(file), state: "" });
+    }
+    if (skipped.length) $("err").textContent = "빠진 사진\n" + skipped.join("\n");
+    renderPicks();
+  }
+  function renderPicks() {
+    const n = S.files.length;
+    $("picks").hidden = $("picksum").hidden = !n;
+    $("hint").innerHTML = n ? `<b>${n}장 선택됨</b>더 끌어 놓거나 눌러서 추가` : HINT;
+    $("picks").innerHTML = S.files.map((x, i) => `<div class="pick${x.state === "실패" ? " failed" : ""}">
+        <img src="${x.url}" alt="${esc(x.file.name)}">
+        ${S.busy ? "" : `<button type="button" class="rm" data-rm="${i}" aria-label="${esc(x.file.name)} 빼기">✕</button>`}
+        ${x.state ? `<span class="st">${esc(x.state)}</span>` : ""}
+      </div>`).join("");
+    const total = S.files.reduce((a, x) => a + x.file.size, 0);
+    $("picksum").innerHTML = n ? `<span>${n}장 · ${mb(total)}</span>${S.busy ? "" : '<button type="button" data-clear>모두 빼기</button>'}` : "";
     updateGo();
   }
   const drop = $("drop");
-  $("file").addEventListener("change", (e) => pick(e.target.files[0]));
+  $("file").addEventListener("change", (e) => { pickMany(e.target.files); e.target.value = ""; });
   ["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
   ["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
-  drop.addEventListener("drop", (e) => pick(e.dataTransfer.files[0]));
+  drop.addEventListener("drop", (e) => pickMany(e.dataTransfer.files));
+  $("picks").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-rm]"); if (!b || S.busy) return;
+    const [x] = S.files.splice(Number(b.dataset.rm), 1); if (x) URL.revokeObjectURL(x.url);
+    renderPicks();
+  });
+  $("picksum").addEventListener("click", (e) => {
+    if (!e.target.closest("[data-clear]") || S.busy) return;
+    S.files.forEach((x) => URL.revokeObjectURL(x.url)); S.files = []; $("err").textContent = ""; renderPicks();
+  });
 
-  function updateGo() { $("go").disabled = !(S.file && S.db && S.assets); }
+  function updateGo() {
+    const n = S.files.length, go = $("go");
+    go.disabled = !(n && S.db && S.assets) || S.busy;
+    if (!S.busy) go.textContent = n > 1 ? `${n}장 의뢰 넣기` : "의뢰 넣기";
+  }
 
   function dims(file) {
     return new Promise((res) => {
@@ -236,47 +287,84 @@ footer.ref { margin-top: 36px; border-top: 1px solid var(--line); padding-top: 1
     });
   }
 
-  // ---- submit ----
+  // ---- submit (one batch) ----
+  const uploadError = (code) => code === "too_large" ? "파일이 너무 큽니다"
+    : code === "unsupported_type" ? "지원하지 않는 형식"
+    : code === "rate_limited" ? "요청이 많아요, 잠시 뒤 다시"
+    : "올리지 못했어요";
   $("f").addEventListener("submit", async (e) => {
     e.preventDefault();
-    if (!S.file || !S.db || !S.assets) return;
-    const go = $("go"); go.disabled = true; go.textContent = "올리는 중…"; $("err").textContent = "";
-    try {
-      const [w, h] = await dims(S.file);
-      const up = await S.assets.upload(S.file, { type: S.file.type });
-      const ref = S.db.collection("jobs").doc();
-      await ref.set({
-        original: up.id, filename: S.file.name, bytes: up.sizeBytes, width: w, height: h,
-        genre: document.querySelector('input[name="genre"]:checked').value,
-        strength: $("strength").value, ratio: $("ratio").value, notes: $("notes").value.trim(),
-        status: "queued", createdAt: new Date().toISOString(),
-      });
-      S.file = null; $("f").reset(); $("hint").innerHTML = "<b>여기에 사진을 끌어 놓거나 눌러서 선택</b>JPG · PNG · WebP, 20MB 이하";
-      toast("의뢰를 넣었어요. 채팅에 '올렸어'라고 알려 주세요.");
-    } catch (er) {
-      const code = er && er.code;
-      $("err").textContent = code === "too_large" ? "파일이 너무 큽니다. 20MB 이하로 올려 주세요."
-        : code === "unsupported_type" ? "지원하지 않는 형식입니다. JPG, PNG, WebP로 올려 주세요."
-        : code === "quota_or_state" ? "저장 공간이 찼어요. 끝난 작업을 지운 뒤 다시 올려 주세요."
-        : code === "rate_limited" ? "잠시 뒤에 다시 올려 주세요."
-        : "올리지 못했어요. 페이지를 새로 고친 뒤 다시 시도해 주세요.";
-    } finally {
-      go.textContent = "의뢰 넣기"; updateGo();
+    if (!S.files.length || !S.db || !S.assets || S.busy) return;
+    S.busy = true; $("err").textContent = "";
+    const go = $("go"); go.disabled = true;
+    const items = S.files.slice(), total = items.length;
+    // a retry of photos that failed in an earlier batch rejoins that batch
+    const prev = items[0].batch && items.every((x) => x.batch === items[0].batch) ? items[0] : null;
+    const batch = prev ? prev.batch : total > 1 ? "b" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) : null;
+    const batchSize = prev ? prev.batchSize : total;
+    const prevJob = prev ? S.jobs.find((j) => j.batch === prev.batch) : null;
+    const settings = prevJob
+      ? { genre: prevJob.genre, strength: prevJob.strength, ratio: prevJob.ratio, notes: prevJob.notes || "" }
+      : { genre: document.querySelector('input[name="genre"]:checked').value,
+          strength: $("strength").value, ratio: $("ratio").value, notes: $("notes").value.trim() };
+    const t0 = Date.now();
+    let ok = 0, stopped = false;
+    $("prog").hidden = false; $("progbar").style.width = "0%";
+    items.forEach((x) => { x.state = "대기"; });
+    renderPicks();
+    for (let i = 0; i < total; i++) {
+      const x = items[i];
+      go.textContent = `${i + 1}/${total} 올리는 중…`;
+      x.state = "올리는 중"; renderPicks();
+      try {
+        const [w, h] = await dims(x.file);
+        const up = await S.assets.upload(x.file, { type: x.file.type });
+        const doc = {
+          original: up.id, filename: x.file.name, bytes: up.sizeBytes, width: w, height: h, ...settings,
+          status: "queued", createdAt: new Date(t0 + i).toISOString(),
+        };
+        if (batch) Object.assign(doc, { batch, batchIndex: x.batchIndex || i + 1, batchSize });
+        await S.db.collection("jobs").doc().set(doc);
+        x.state = "완료"; ok++;
+      } catch (er) {
+        const code = er && er.code;
+        x.state = "실패";
+        if (batch) Object.assign(x, { batch, batchIndex: x.batchIndex || i + 1, batchSize });
+        if (code === "quota_or_state") {
+          $("err").textContent = "저장 공간이 찼어요. 끝난 작업을 지운 뒤 남은 사진을 다시 올려 주세요.";
+          stopped = true;
+        } else {
+          $("err").textContent += ($("err").textContent ? "\n" : "") + `${x.file.name}: ${uploadError(code)}`;
+        }
+      }
+      $("progbar").style.width = Math.round(((i + 1) / total) * 100) + "%";
+      renderPicks();
+      if (stopped) break;
     }
+    // keep only the photos that did not make it, so the viewer can retry them
+    const left = items.filter((x) => x.state !== "완료");
+    items.filter((x) => x.state === "완료").forEach((x) => URL.revokeObjectURL(x.url));
+    left.forEach((x) => { if (x.state !== "실패") x.state = ""; });
+    S.files = left; S.busy = false;
+    if (!left.length) { $("notes").value = ""; }
+    setTimeout(() => { $("prog").hidden = true; }, 800);
+    renderPicks();
+    if (ok) toast(ok > 1 ? `${ok}장 의뢰를 넣었어요. 채팅에 '올렸어'라고 알려 주세요.` : "의뢰를 넣었어요. 채팅에 '올렸어'라고 알려 주세요.");
   });
 
   // ---- render jobs ----
   function render() {
     const list = $("jobs");
     const n = S.jobs.length;
-    $("count").textContent = n ? `${n}건` : "0건";
+    const nb = new Set(S.jobs.filter((j) => j.batch).map((j) => j.batch)).size;
+    $("count").textContent = n ? `${n}장${nb ? ` · 묶음 ${nb}` : ""}` : "0장";
     if (!n) {
       list.innerHTML = '<div class="empty"><b>아직 의뢰가 없습니다</b>왼쪽에서 원본을 올리면 여기에 대기 상태로 나타납니다.</div>';
       return;
     }
-    list.innerHTML = S.jobs.map((j, i) => {
+    const card = (j, i) => {
       const [label, cls] = STATUS[j.status] || STATUS.queued;
-      const no = String(n - i).padStart(2, "0");
+      const no = j.batch ? `${j.batchIndex}/${j.batchSize}` : String(n - i).padStart(2, "0");
       const orig = "/_blob/" + (j.status === "done" && j.before ? j.before : j.original);
       const view = j.status === "done" && j.result
         ? `<div class="ba" style="--cut:50%"><img src="${orig}" alt="보정 전"><div class="after"><img src="/_blob/${esc(j.result)}" alt="보정 후"></div><div class="bar"></div><span class="tag l">전</span><span class="tag r">후</span><input type="range" min="0" max="100" value="50" aria-label="전후 비교 위치" data-ba></div>`
@@ -309,6 +397,34 @@ footer.ref { margin-top: 36px; border-top: 1px solid var(--line); padding-top: 1
           </div>
         </div>
       </article>`;
+    };
+    // group: one section per batch (in upload order inside), single uploads stay as they are
+    const groups = [], seen = new Map();
+    S.jobs.forEach((j, i) => {
+      if (j.batch) {
+        if (!seen.has(j.batch)) { const g = { batch: j.batch, items: [] }; seen.set(j.batch, g); groups.push(g); }
+        seen.get(j.batch).items.push([j, i]);
+      } else groups.push({ items: [[j, i]] });
+    });
+    list.innerHTML = groups.map((g) => {
+      if (!g.batch) return card(...g.items[0]);
+      g.items.sort((a, b) => (a[0].batchIndex || 0) - (b[0].batchIndex || 0));
+      const first = g.items[0][0], size = first.batchSize || g.items.length;
+      const done = g.items.filter(([j]) => j.status === "done").length;
+      const working = g.items.some(([j]) => j.status === "working");
+      const key = "batch:" + g.batch;
+      const del = !S.assets ? "" : S.confirmDel === key
+        ? `<span class="confirm">묶음 ${g.items.length}장의 원본과 결과를 모두 지울까요? <button class="btn-ghost" data-bdel-yes="${esc(g.batch)}">지우기</button><button class="btn-ghost" data-del-no>취소</button></span>`
+        : `<button class="btn-ghost" data-bdel="${esc(g.batch)}">묶음 삭제</button>`;
+      return `<section class="batch" aria-label="묶음 ${size}장">
+        <div class="batch-head">
+          <div><div class="batch-title">묶음 · ${size}장</div>
+            <div class="batch-meta">${esc(when(first.createdAt))} · ${esc(GENRE[first.genre] || first.genre)} · ${esc(STRENGTH[first.strength] || first.strength)} · 완료 ${done}/${size}${working ? " · 보정 중" : ""}</div></div>
+          ${del}
+          <div class="batch-bar"><i style="width:${Math.round((done / size) * 100)}%"></i></div>
+        </div>
+        ${g.items.map(([j, i]) => card(j, i)).join("")}
+      </section>`;
     }).join("");
   }
 
@@ -319,6 +435,19 @@ footer.ref { margin-top: 36px; border-top: 1px solid var(--line); padding-top: 1
     const t = e.target;
     if (t.dataset.del) { S.confirmDel = t.dataset.del; render(); return; }
     if (t.hasAttribute("data-del-no")) { S.confirmDel = null; render(); return; }
+    if (t.dataset.bdel) { S.confirmDel = "batch:" + t.dataset.bdel; render(); return; }
+    if (t.dataset.bdelYes) {
+      const items = S.jobs.filter((x) => x.batch === t.dataset.bdelYes); S.confirmDel = null;
+      let failed = 0;
+      for (const j of items) {
+        try {
+          await S.db.doc("jobs/" + j.id).delete();
+          for (const id of [j.original, j.before, j.result]) if (id) { try { await S.assets.delete(id); } catch {} }
+        } catch { failed++; }
+      }
+      toast(failed ? `${failed}장을 지우지 못했어요. 다시 시도해 주세요.` : `묶음 ${items.length}장을 삭제했어요.`);
+      return;
+    }
     if (t.dataset.delYes) {
       const j = S.jobs.find((x) => x.id === t.dataset.delYes); S.confirmDel = null;
       if (!j) return;
@@ -356,7 +485,7 @@ footer.ref { margin-top: 36px; border-top: 1px solid var(--line); padding-top: 1
     }
     if (!assets) $("err").textContent = "이 페이지의 편집 권한이 있어야 사진을 올릴 수 있어요.";
     updateGo();
-    db.collection("jobs").orderBy("createdAt", "desc").limit(50).onSnapshot(
+    db.collection("jobs").orderBy("createdAt", "desc").limit(200).onSnapshot(
       (snap) => { S.jobs = snap.docs.map((d) => ({ id: d.id, ...d.data() })); render(); },
       () => { $("count").textContent = "연결 끊김"; }
     );
