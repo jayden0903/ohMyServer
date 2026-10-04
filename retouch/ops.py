@@ -518,6 +518,87 @@ def clone(img: np.ndarray, dst: list[float], src: list[float], r: float, feather
     return img + disk[..., None] * (shifted - img)
 
 
+def deghost(img: np.ndarray, cx: float, cy: float, r: float, sectors: int = 12,
+            ref: tuple[float, float] = (1.06, 1.45), feather: float = 0.1, nq: int = 96,
+            fade_toward: tuple[float, float] | None = None, fade: float = 0.0) -> np.ndarray:
+    """Remove a lens-flare ghost (the coloured disc a bright source throws across the frame).
+    Phone pipelines tone-map the ghost, so it is neither purely additive nor a plain tint. Like a
+    retoucher matching a patch to its surroundings, each angular sector of the disc is matched to
+    the ring of untouched scene just outside it at the same angle: lightness by full quantile
+    mapping, a*/b* by mean/spread transfer (per-channel rank mapping speckles). Sectors blend
+    smoothly, and because each matches its own neighbourhood, real light (the sun's glow on one
+    side) is kept. cx, cy are fractions of width/height; r is a fraction of width.
+    `fade_toward` = [x, y] of the light source: the correction eases off on the side of the disc
+    facing it by `fade` (0..1), where ghost and real glare overlap and real glare should win."""
+    h, w = img.shape[:2]
+    cx, cy, r = cx * w, cy * h, r * w
+    R = r * ref[1]
+    x0, x1 = int(max(0, cx - R)), int(min(w, cx + R + 1))
+    y0, y1 = int(max(0, cy - R)), int(min(h, cy + R + 1))
+    sub = img[y0:y1, x0:x1]
+    lab = C.rgb_to_lab(sub)
+    yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32)
+    d = np.hypot(xx - cx, yy - cy) / r
+    th = np.arctan2(yy - cy, xx - cx)
+    inside, ring = d < 1.0, (d > ref[0]) & (d < ref[1])
+    qs = np.linspace(0, 100, nq)
+    acc = np.zeros_like(lab)
+    wsum = np.zeros(sub.shape[:2], np.float32)
+    sw = 2 * np.pi / sectors
+    for k in range(sectors):
+        ad = np.abs(np.angle(np.exp(1j * (th - (-np.pi + (k + 0.5) * sw)))))
+        sel_in, sel_rf = inside & (ad < sw * 0.75), ring & (ad < sw * 0.75)
+        if sel_in.sum() < 500 or sel_rf.sum() < 500:
+            continue
+        mk = np.empty_like(lab)
+        qi = np.maximum.accumulate(np.percentile(lab[..., 0][sel_in], qs) + np.arange(nq) * 1e-6)
+        mk[..., 0] = np.interp(lab[..., 0], qi, np.percentile(lab[..., 0][sel_rf], qs))
+        for c in (1, 2):
+            mi, si = lab[..., c][sel_in].mean(), lab[..., c][sel_in].std() + 1e-3
+            mr, sr = lab[..., c][sel_rf].mean(), lab[..., c][sel_rf].std() + 1e-3
+            mk[..., c] = mr + (lab[..., c] - mi) * min(sr / si, 1.2)
+        wk = np.exp(-0.5 * (ad / (sw * 0.6)) ** 2).astype(np.float32)
+        acc += wk[..., None] * mk
+        wsum += wk
+    mapped = C.lab_to_rgb(acc / np.maximum(wsum, 1e-6)[..., None])
+    m = (1 - C.smoothstep(1 - feather, 1 + feather * 0.3, d)).astype(np.float32)
+    if fade_toward is not None and fade > 0:
+        ux, uy = fade_toward[0] * w - cx, fade_toward[1] * h - cy
+        n = math.hypot(ux, uy) + 1e-6
+        proj = ((xx - cx) * ux + (yy - cy) * uy) / (n * r)      # -1 (far side) .. 1 (toward source)
+        m *= 1 - fade * C.smoothstep(0.2, 0.95, proj)
+    out = img.copy()
+    out[y0:y1, x0:x1] = sub + m[..., None] * (mapped - sub)
+    return np.clip(out, 0, 1).astype(np.float32)
+
+
+def shadow_fix(img: np.ndarray, mask: np.ndarray, sigma: float = 6.0) -> np.ndarray:
+    """Lift an unwanted cast shadow (a blurred dark blob on a lit surface) without touching texture:
+    the surface's own brightness under the shadow is interpolated from around the mask, and the
+    pixels are multiplied (in linear light) by expected/actual low-pass luminance."""
+    lin = _to_linear(img)
+    Y = lin @ np.array([0.2126, 0.7152, 0.0722], np.float32)
+    lp = C.gaussian(Y, sigma)
+    hole = (mask > 0.02).astype(np.float32)
+    exp_lp = fill_from_surround(lp, hole, sigma=sigma * 2, levels=7)
+    gain = np.clip(exp_lp / np.maximum(lp, 1e-5), 1.0, 8.0)
+    gain = 1 + (gain - 1) * mask
+    return np.clip(_to_srgb(lin * gain[..., None]), 0, 1).astype(np.float32)
+
+
+def denoise(img: np.ndarray, luma: float = 0.3, chroma: float = 0.8, luma_sigma: float = 3.0,
+            chroma_px: float = 6.0) -> np.ndarray:
+    """Edge-aware noise reduction for night shots: strong on colour noise (blotchy a*/b*), light on
+    luminance so texture survives. Bilateral filtering in Lab, mixed back by `luma`/`chroma`."""
+    lab = C.rgb_to_lab(img)
+    L, a, b = lab[..., 0], lab[..., 1], lab[..., 2]
+    Lf = cv2.bilateralFilter(L, 0, luma_sigma, 1.5)
+    af = cv2.bilateralFilter(a, 0, 4.0, chroma_px)
+    bf = cv2.bilateralFilter(b, 0, 4.0, chroma_px)
+    out = np.stack([L + luma * (Lf - L), a + chroma * (af - a), b + chroma * (bf - b)], -1)
+    return C.lab_to_rgb(out).astype(np.float32)
+
+
 # ---- finishing -------------------------------------------------------------------------
 def sharpen(img: np.ndarray, radius: float = 1.0, amount: float = 0.6, threshold: float = 0.01) -> np.ndarray:
     """Unsharp mask on luminosity only (no color fringes)."""

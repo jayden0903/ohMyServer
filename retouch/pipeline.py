@@ -37,7 +37,7 @@ GEOMETRY = {
 }
 
 # ops whose function takes the mask itself (the mask selects *where to measure/correct*)
-MASK_AWARE = {"remove_lines", "micro_db", "color_even", "shine_reduce", "match_skin", "color_fix"}
+MASK_AWARE = {"shadow_fix", "remove_lines", "micro_db", "color_even", "shine_reduce", "match_skin", "color_fix"}
 
 ADJUST = {
     "curves": lambda img, s, m: O.curves(img, s["points"], s.get("channel", "rgb")),
@@ -78,6 +78,12 @@ ADJUST = {
                                                      s.get("dark", True)),
     "heal": lambda img, s, m: O.heal(img, s["spots"], s.get("search", 3.0)),
     "clone": lambda img, s, m: _clone_all(img, s["strokes"]),
+    "deghost": lambda img, s, m: O.deghost(img, s["cx"], s["cy"], s["r"], s.get("sectors", 12),
+                                           tuple(s.get("ref", (1.06, 1.45))), s.get("feather", 0.1),
+                                           fade_toward=s.get("fade_toward"), fade=s.get("fade", 0.0)),
+    "shadow_fix": lambda img, s, m: O.shadow_fix(img, m, s.get("sigma", 6.0)),
+    "denoise": lambda img, s, m: O.denoise(img, s.get("luma", 0.3), s.get("chroma", 0.8), s.get("luma_sigma", 3.0),
+                                           s.get("chroma_px", 6.0)),
     "sharpen": lambda img, s, m: O.sharpen(img, s.get("radius", 1.0), s.get("amount", 0.6), s.get("threshold", 0.01)),
     "grain": lambda img, s, m: O.grain(img, s.get("amount", 0.015), s.get("size", 0.8), s.get("seed", 7)),
 }
