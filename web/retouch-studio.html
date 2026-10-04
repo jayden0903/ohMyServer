@@ -1,0 +1,435 @@
+<title>AI 보정 스튜디오</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: darkroom bench. Left column = the work order; right = the print with a before/after loupe. */
+:root {
+  --bg: #e6e6e3; --surface: #f6f6f4; --ink: #1d1e20; --muted: #5f6167; --line: #c9c9c5;
+  --accent: #c8321f; --ok: #2f7d4f; --warn: #a8660b;
+  --f-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #18191b; --surface: #222326; --ink: #ececea; --muted: #a0a2a8; --line: #36383c; --accent: #ff6a52; --ok: #6cc592; --warn: #e3a64a; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --bg: #18191b; --surface: #222326; --ink: #ececea; --muted: #a0a2a8; --line: #36383c; --accent: #ff6a52; --ok: #6cc592; --warn: #e3a64a; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.6; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-inline: 18px; padding-block: 24px 56px; }
+header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 20px; border-bottom: 2px solid var(--ink); padding-bottom: 12px; margin-bottom: 20px; }
+h1 { margin: 0; font-size: clamp(26px, 4vw, 36px); letter-spacing: -0.02em; line-height: 1.1; }
+h1 span { color: var(--accent); }
+.edge { font-family: var(--f-mono); font-size: 12px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+.grid { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 880px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 18px; display: grid; gap: 14px; }
+.lbl { font-family: var(--f-mono); font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+label.f { display: grid; gap: 6px; }
+select, textarea { font: inherit; font-size: 14px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 9px 10px; width: 100%; }
+textarea { min-height: 70px; resize: vertical; }
+.drop { position: relative; border: 1.5px dashed var(--line); border-radius: 6px; background: var(--bg); min-height: 120px; display: grid; place-items: center; text-align: center; padding: 12px; color: var(--muted); font-size: 13px; }
+.drop.over { border-color: var(--accent); }
+.drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.drop b { display: block; color: var(--ink); font-size: 14px; }
+button { font: inherit; cursor: pointer; border-radius: 4px; }
+.btn { background: var(--accent); color: #fff; border: 0; padding: 11px 14px; font-weight: 600; }
+.btn[disabled], .ghost[disabled] { opacity: .45; cursor: not-allowed; }
+.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); padding: 8px 12px; font-size: 14px; }
+.ghost:hover:not([disabled]) { border-color: var(--ink); }
+button:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; }
+.status { font-size: 13.5px; display: grid; gap: 4px; }
+.status ol { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
+.status li.now { color: var(--warn); font-weight: 600; }
+.status li.done { color: var(--muted); }
+.status li.err { color: var(--accent); }
+.note { font-size: 13px; color: var(--muted); }
+.err { color: var(--accent); font-size: 13.5px; }
+.stage { display: grid; gap: 12px; min-width: 0; }
+.view { background: #111214; border-radius: 6px; min-height: 280px; display: grid; place-items: center; overflow: hidden; color: #8a8c92; font-size: 14px; text-align: center; padding: 0; }
+.view .empty { padding: 40px 20px; }
+.ba { position: relative; width: 100%; user-select: none; touch-action: pan-y; }
+.ba img { display: block; width: 100%; height: auto; }
+.ba .after { position: absolute; inset: 0; clip-path: inset(0 0 0 var(--cut, 50%)); }
+.ba .after img { width: 100%; height: 100%; object-fit: cover; }
+.ba .bar { position: absolute; top: 0; bottom: 0; left: var(--cut, 50%); width: 2px; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.4); pointer-events: none; }
+.ba .tag { position: absolute; top: 8px; font-family: var(--f-mono); font-size: 11px; background: rgba(0,0,0,.6); color: #fff; padding: 2px 7px; border-radius: 3px; }
+.ba .tag.l { left: 8px; } .ba .tag.r { right: 8px; }
+.ba input[type=range] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: ew-resize; margin: 0; }
+.single { display: block; width: 100%; height: auto; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 14px; min-width: 0; font-size: 14px; }
+.card h3 { margin: 0 0 6px; font-size: 14px; }
+.card ol { margin: 0; padding-left: 18px; display: grid; gap: 3px; }
+.nums { display: flex; flex-wrap: wrap; gap: 6px; }
+.num { font-family: var(--f-mono); font-size: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 3px; padding: 2px 7px; font-variant-numeric: tabular-nums; }
+pre { margin: 0; font-family: var(--f-mono); font-size: 11.5px; white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow: auto; background: var(--bg); padding: 8px; border-radius: 4px; }
+details summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.versions { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.versions button { flex: 0 0 auto; width: 104px; padding: 0; border: 2px solid transparent; background: var(--surface); border-radius: 5px; overflow: hidden; text-align: left; color: var(--ink); }
+.versions button[aria-pressed="true"] { border-color: var(--accent); }
+.versions img { display: block; width: 100%; height: 64px; object-fit: cover; background: #111214; }
+.versions span { display: block; font-size: 11.5px; padding: 3px 6px; font-family: var(--f-mono); }
+.log { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 14px; display: grid; gap: 10px; }
+.log-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.entry { border-left: 3px solid var(--line); padding: 2px 0 2px 12px; display: grid; gap: 6px; min-width: 0; }
+.entry.run { border-color: var(--warn); }
+.entry.ok { border-color: var(--ok); }
+.entry.bad { border-color: var(--accent); }
+.entry-top { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; }
+.entry-top b { font-weight: 600; }
+.entry-top .t { font-family: var(--f-mono); font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.entry .sub { font-size: 13px; color: var(--muted); }
+.entry .think { font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; background: var(--bg); border-radius: 4px; padding: 8px 10px; max-height: 240px; overflow: auto; }
+.entry .think:empty::before { content: "생각하는 중…"; color: var(--muted); }
+.entry .thumbs { display: flex; gap: 6px; flex-wrap: wrap; }
+.entry .thumbs img { height: 90px; width: auto; border-radius: 3px; cursor: zoom-in; }
+.dots::after { content: "…"; animation: blink 1.2s steps(3) infinite; }
+@keyframes blink { 0% { opacity: .2 } 50% { opacity: 1 } 100% { opacity: .2 } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>AI 보정 스튜디오<span>.</span></h1>
+    <span class="edge">Claude 판단 · Retouch Engine 서버 · 생성형 AI 없음</span>
+  </header>
+  <div class="grid">
+    <section class="panel" aria-labelledby="h-order">
+      <h2 id="h-order" class="lbl" style="margin:0">작업 지시</h2>
+      <div class="drop" id="drop"><input type="file" id="file" accept="image/jpeg,image/png,image/webp,image/tiff" aria-label="사진 선택"><div id="hint"><b>사진을 끌어 놓거나 눌러서 선택</b>JPG · PNG · WebP · TIFF</div></div>
+      <label class="f"><span class="lbl">장르</span>
+        <select id="genre"><option value="auto">알아서</option><option value="portrait">인물</option><option value="beauty">뷰티 (피부 정밀)</option><option value="landscape">풍경</option><option value="product">제품 · 음식</option><option value="street">스냅 · 거리</option></select></label>
+      <label class="f"><span class="lbl">원하는 느낌 (선택)</span>
+        <textarea id="wish" placeholder="예: 시네마틱하게, 수평 맞추고, 점은 남겨줘"></textarea></label>
+      <label class="f"><span class="lbl">판단 모델</span>
+        <select id="tier"><option value="default">기본</option><option value="complex">최고 품질 (느림)</option></select></label>
+      <button class="btn" id="go" disabled>보정 시작</button>
+      <div class="note" id="info"></div>
+      <div class="err" id="err" role="alert"></div>
+    </section>
+
+    <section class="stage" aria-label="결과">
+      <div class="view" id="view"><div class="empty">사진을 올리면 여기에 원본이 보이고,<br>보정이 진행되는 동안 버전이 하나씩 쌓입니다.</div></div>
+      <div class="versions" id="versions" role="group" aria-label="버전"></div>
+      <div class="row" id="actions" hidden><button class="ghost" id="save">선택한 버전을 원본 해상도로 저장</button></div>
+      <div class="panel" id="refine" hidden>
+        <label class="f"><span class="lbl">수정 요청</span><textarea id="ask" placeholder="예: 조금 덜 파랗게, 하늘 더 어둡게, 피부 더 매끈하게"></textarea></label>
+        <div class="row"><button class="btn" id="redo">반영하기</button></div>
+      </div>
+      <div class="log" id="logbox" hidden>
+        <div class="log-head"><span class="lbl">진행 과정</span><span class="edge" id="total"></span></div>
+        <div id="log" aria-live="polite" style="display:grid;gap:12px"></div>
+      </div>
+      <div class="cards" id="cards"></div>
+    </section>
+  </div>
+</div>
+
+<script>
+(() => {
+  const SERVER = "Retouch Engine";
+  const $ = (id) => document.getElementById(id);
+  const S = { mcp: null, sample: null, downloads: null, canImages: false, fileArgs: false,
+              file: null, job: null, analysis: null, beforeBlob: null, beforeUrl: null, afterBlob: null,
+              steps: null, metrics: null, notes: [], busy: false, versions: [], sel: -1, rendered: -1, t0: 0 };
+
+  const OPS = `레시피 = {"steps":[...]}. 좌표는 모두 0..1 정규화(x 오른쪽, y 아래), 반경은 이미지 너비 대비 비율.
+기하(먼저): rotate{degrees(+는 반시계, 기울어진 수평선 보정값)}, crop_ratio{ratio:"4:5"|"3:2"|"16:9"|"1:1"|"2:3"|"3:4"|"9:16",center:[x,y],scale}, crop_box{box:[x0,y0,x1,y1]}, keystone{vertical,horizontal}.
+톤: curves{points:[[in,out],...] 0..255, channel:"lum"|"rgb"|"r"|"g"|"b"}, levels{black,white,gamma}, exposure{ev}, shadows_highlights{shadows,highlights 0..1}, local_contrast{amount 0..1,sigma px}.
+색: white_balance{temp,tint -1..1}, saturation{amount -1..1}, vibrance{amount}, hue_sat{center,width,soft,hue,sat,light — HSV 색상각: 빨강0 주황30 노랑60 초록120 청록180 파랑220 자주300}, lab_shift{da,db,dl}, split_tone{shadow_hue,shadow_sat,highlight_hue,highlight_sat 0..1,balance — Lab 색상각: 빨강30 주황60 노랑90 초록140 청록200 청남222 파랑270}, color_balance{shadows,midtones,highlights:[cr,mg,yb]}, gradient_map{stops,opacity_map}, mono{r,g,b,tone,tone_amount}.
+피부(얼굴 있을 때): micro_db{s_lo,s_hi,strength 0..1,cap}, color_even{s_lo,s_hi,strength,cap}, match_skin{hue 53..62,chroma,strength}, shine_reduce{threshold,amount}, heal{spots:[{x,y,r}]}, dodge_burn{strokes:[{ellipse:[cx,cy,rx,ry,angle],amount(L 단위, +밝게 -어둡게),feather}]}.
+마무리: sharpen{radius,amount}, grain{amount 0.003..0.02,size}, remove_lines{width_px} (하늘 전선).
+모든 단계에 "mask"와 "opacity" 가능. mask: {"sky":{"refine":0}} 하늘, {"parts":["face_skin","neck","eyes","lips","hair","brows","teeth"],"exclude_parts":[...]} 얼굴 부위, {"lum":"lights2"|"darks2"|"mid1"} 밝기, {"hue":[중심,폭]} 색, {"include":[{"ellipse":[cx,cy,rx,ry,ang],"feather":0.8},{"gradient":[[x0,y0],[x1,y1]]},{"rect":[x0,y0,x1,y1]},{"polygon":[[x,y],...]}]}, {"grabcut":{"rect":[...],"fg":[[x,y,r]],"bg":[[x,y,r]]}} 피사체, "invert":true, "minus":{다른 마스크}, "exclude":[도형], "feather":px. 여러 조건은 곱(교집합).
+기본값 예: 마이크로 D&B {s_lo: 얼굴폭/300, s_hi: 얼굴폭/35} (분석의 scale_params 참고). 크롭 후에는 좌표가 크롭된 화면 기준.`;
+
+  const PRINCIPLES = `원칙: 생성형 편집 없이 전문가처럼. 점·주근깨·수염은 남기고 일시적인 잡티만. 피부는 모공을 지운 플라스틱 피부 금지(질감 보존 지표 texture_retention ≥ 0.85). 피부 Lab 색상각 53~62, b*≥a*. 하이라이트 클리핑 늘리지 않기. 과보정보다 덜 하는 쪽. 수평선이 기울었으면(horizon.rotate, confidence>0.5) 그 값만큼 rotate. 사용자의 요청이 최우선.`;
+
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const b64ToBlob = (b64, type = "image/jpeg") => { const bin = atob(b64); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new Blob([u], { type }); };
+  const fileToB64 = (blob) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(blob); });
+  const sec = (ms) => (ms / 1000).toFixed(ms < 10000 ? 1 : 0) + "s";
+
+  // ---- timeline -------------------------------------------------------------------
+  let ticker = null;
+  function tick() {
+    document.querySelectorAll(".entry.run").forEach((el) => { el.querySelector(".t").textContent = sec(Date.now() - +el.dataset.t0); });
+    if (S.t0) $("total").textContent = "전체 " + sec(Date.now() - S.t0);
+  }
+  function entry(title, sub) {
+    $("logbox").hidden = false;
+    const el = document.createElement("div");
+    el.className = "entry run"; el.dataset.t0 = Date.now();
+    el.innerHTML = `<div class="entry-top"><b><span class="ttl">${esc(title)}</span><span class="dots"></span></b><span class="t">0.0s</span></div><div class="sub">${esc(sub || "")}</div><div class="body"></div>`;
+    $("log").appendChild(el);
+    el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    const body = el.querySelector(".body");
+    return {
+      sub(t) { el.querySelector(".sub").textContent = t; },
+      html(h) { body.innerHTML = h; },
+      think() { let p = body.querySelector(".think"); if (!p) { p = document.createElement("div"); p.className = "think"; body.appendChild(p); } return p; },
+      thumbs(urls) { const d = document.createElement("div"); d.className = "thumbs"; d.innerHTML = urls.map((u) => `<img src="${u}" alt="">`).join(""); body.appendChild(d); },
+      done(sub) { el.classList.remove("run"); el.classList.add("ok"); el.querySelector(".dots").remove(); el.querySelector(".t").textContent = sec(Date.now() - +el.dataset.t0); if (sub != null) this.sub(sub); },
+      fail(msg) { el.classList.remove("run"); el.classList.add("bad"); el.querySelector(".dots")?.remove(); this.sub(msg); },
+    };
+  }
+  $("log").addEventListener("click", (e) => { const img = e.target.closest(".thumbs img"); if (img) { const v = S.versions.find((x) => x.url === img.src); if (v) select(S.versions.indexOf(v)); } });
+
+  function mcpMsg(e) {
+    switch (e && e.code) {
+      case "server_not_connected": return `claude.ai 설정 → 커넥터에 "${SERVER}"를 추가해 주세요.`;
+      case "needs_reauth": return `"${SERVER}" 커넥터를 설정에서 다시 연결해 주세요.`;
+      case "not_in_manifest": return `이 페이지에서 "${SERVER}" 사용이 허용되지 않았어요. 페이지 권한에서 허용해 주세요.`;
+      case "selection_required": return "같은 이름의 커넥터가 여러 개예요. 하나를 선택해 주세요.";
+      case "server_unavailable": return "서버가 응답하지 않아요. 잠시 후 다시 시도해 주세요.";
+      case "tool_error": return "엔진 오류: " + (e.message || "").slice(0, 300);
+      default: return "엔진 호출 실패: " + ((e && (e.code + " " + (e.message || ""))) || e);
+    }
+  }
+  function sampleMsg(e) {
+    switch (e && e.code) {
+      case "not_granted": return "Claude 사용이 허용되지 않았어요. 페이지 권한에서 허용해 주세요.";
+      case "rate_limited": return "Claude 사용량이 잠시 한도에 걸렸어요. 조금 뒤에 다시 시도해 주세요.";
+      case "bad_recipe": return "Claude 답에서 레시피를 읽지 못했어요. 다시 시도해 주세요.";
+      default: return "Claude 호출 실패: " + ((e && (e.code + " " + (e.message || ""))) || e);
+    }
+  }
+
+  async function tool(name, input) {
+    const r = await S.mcp.callTool(SERVER, name, input, { cache: false });
+    const text = (r.content || []).filter((b) => b.type === "text").map((b) => b.text);
+    const image = (r.content || []).find((b) => b.type === "image");
+    let json = null;
+    for (const t of text) { try { json = JSON.parse(t); break; } catch {} }
+    if (json === null && r.payload && typeof r.payload === "object") json = r.payload;
+    return { json, image };
+  }
+
+  // Claude: write short Korean reasoning lines (streamed to the timeline), then the JSON between markers.
+  async function ask(prompt, images, ent) {
+    const box = ent.think();
+    const full = prompt + `
+
+답 형식: 먼저 한국어로 짧은 줄 4~8개(관찰한 것, 무엇을 왜 할지)를 쓰고, 그다음 줄에 <<<JSON 을 쓰고 JSON 하나를 쓴 뒤 JSON>>> 로 끝내라.`;
+    const opts = (withImg) => ({
+      images: withImg ? images : undefined, modelTier: $("tier").value, cache: false,
+      onText: ({ text }) => { box.textContent = text.split("<<<JSON")[0].trim(); if (text.includes("<<<JSON")) ent.sub("레시피 작성 중…"); },
+    });
+    let r;
+    if (S.canImages !== false) {
+      try { r = await S.sample(full, opts(true)); S.canImages = true; }
+      catch (e) {
+        if (e && (e.code === "images_unavailable" || e.code === "image_rejected")) {
+          S.canImages = false;
+          $("info").textContent = `Claude에게 이미지를 보내지 못해(${e.code}) 엔진의 수치 묘사만으로 판단해요.`;
+          r = await S.sample(full.replace(/이미지 [12]은[^.]*\./g, ""), opts(false));
+        } else throw e;
+      }
+    } else r = await S.sample(full, opts(false));
+    const t = r.text;
+    box.textContent = t.split("<<<JSON")[0].trim();
+    let j = t.includes("<<<JSON") ? t.split("<<<JSON")[1].split("JSON>>>")[0] : t.slice(t.indexOf("{"), t.lastIndexOf("}") + 1);
+    j = j.replace(/^\s*```(json)?/i, "").replace(/```\s*$/, "");
+    try { return JSON.parse(j); } catch { throw { code: "bad_recipe" }; }
+  }
+
+  async function upload(file) {
+    const ent = entry("사진 업로드", `${file.name} · ${(file.size / 1048576).toFixed(1)}MB`);
+    try {
+      const { json } = await tool("new_job", { filename: file.name });
+      S.job = json.job_id;
+      if (S.fileArgs && file.size <= 15 * 1024 * 1024) {
+        await tool("put_chunk", { job_id: S.job, index: 0, total: 1, data_b64: { $file: { data: file, name: file.name.replace(/[^\w.\-]/g, "_") || "photo.jpg", type: file.type || "image/jpeg" } } });
+      } else {
+        const b64 = await fileToB64(file);
+        const N = 700000, total = Math.ceil(b64.length / N);
+        for (let i = 0; i < total; i++) {
+          ent.sub(`${i + 1} / ${total} 조각 전송`);
+          await tool("put_chunk", { job_id: S.job, index: i, total, data_b64: b64.slice(i * N, (i + 1) * N) });
+        }
+      }
+      ent.done("서버에 저장됨");
+    } catch (e) { ent.fail(mcpMsg(e)); throw e; }
+  }
+
+  async function analyze() {
+    const ent = entry("엔진 분석", "얼굴 · 수평선 · 색 · 노출 측정");
+    try {
+      const { json, image } = await tool("analyze", { job_id: S.job });
+      S.analysis = json; S.beforeBlob = b64ToBlob(image.data, image.mimeType || "image/jpeg");
+      if (S.beforeUrl) URL.revokeObjectURL(S.beforeUrl);
+      S.beforeUrl = URL.createObjectURL(S.beforeBlob);
+      const a = json || {}, hz = a.horizon || {}, fc = (a.faces || []).length;
+      const facts = [
+        a.size && `${a.size[0]}×${a.size[1]}px`,
+        fc ? `얼굴 ${fc}개` : "얼굴 없음",
+        hz.confidence > 0.5 ? `수평선 기울기 ${hz.rotate}°` : "뚜렷한 수평선 없음",
+        a.clip_pct && `하이라이트 날림 ${a.clip_pct.high}% · 암부 뭉개짐 ${a.clip_pct.low}%`,
+        a.skin && `피부 색상각 ${a.skin.lab_hue_mean}°`,
+      ].filter(Boolean);
+      ent.html(`<div class="nums">${facts.map((f) => `<span class="num">${esc(f)}</span>`).join("")}</div>`);
+      ent.done("측정 완료");
+    } catch (e) { ent.fail(mcpMsg(e)); throw e; }
+  }
+
+  function planPrompt(extra) {
+    return `너는 최상위 하이엔드 리터처다. ${S.canImages ? "이미지 1은 원본 축소본" + (S.steps ? ", 이미지 2는 현재 결과" : "") + "이다." : ""} 엔진 분석을 보고 보정 레시피를 만들어라.
+장르: ${$("genre").value}. 사용자 요청: ${$("wish").value.trim() || "(없음, 알아서 최적으로)"}${extra ? "\n추가 수정 요청: " + extra : ""}
+${PRINCIPLES}
+엔진 분석(JSON): ${JSON.stringify(S.analysis).slice(0, 12000)}
+${S.steps ? "현재 레시피(이걸 고쳐서 새 레시피 전체를 내라): " + JSON.stringify(S.steps).slice(0, 12000) : ""}
+${OPS}
+이미지를 못 받으면 analysis.describe(4x4 격자별 밝기 L·색 a/b·색상각·채도·엣지, 하늘 비율, 밝기 히스토그램)로 장면을 머릿속에 그려서 판단하라. 얼굴 위치는 faces.box/landmarks.
+JSON 형식: {"steps":[...]}`;
+  }
+  function reviewPrompt() {
+    return `너는 레시피를 만들지 않은 엄격한 시니어 리터처 평가자다. ${S.canImages ? "이미지 1은 원본, 이미지 2는 보정 결과다(크롭·회전으로 프레임이 다를 수 있음)." : ""}
+사용자 요청: ${$("wish").value.trim() || "(없음)"}. 장르: ${$("genre").value}.
+수치 검사: ${JSON.stringify(S.metrics).slice(0, 4000)}
+${PRINCIPLES}
+현재 레시피: ${JSON.stringify(S.steps).slice(0, 12000)}
+${OPS}
+이미지를 못 받으면 원본 analysis.describe와 결과 describe(수치 검사의 describe)를 격자별로 비교하라.
+원본 묘사: ${JSON.stringify((S.analysis || {}).describe || {}).slice(0, 5000)}
+결과 묘사: ${JSON.stringify(S.lastDescribe || {}).slice(0, 5000)}
+결함(헤일로, 색 틀어짐, 과보정, 플라스틱 피부, 마스크 경계, 너무 약함/강함)을 찾아라. 짧은 줄에는 평가 점수(10점 만점)와 문제점을 써라.
+JSON 형식: 고칠 게 없으면 {"ok":true,"score":숫자}, 고칠 게 있으면 {"ok":false,"score":숫자,"steps":[수정한 레시피 전체]}.`;
+  }
+
+  async function renderSteps(steps, label) {
+    const ent = entry(`엔진 렌더링 · ${label}`, `${steps.length}단계 적용`);
+    try {
+      const { json, image } = await tool("render", { job_id: S.job, recipe_json: JSON.stringify({ steps }) });
+      S.steps = steps; S.metrics = json && json.metrics; S.lastDescribe = json && json.describe;
+      S.afterBlob = b64ToBlob(image.data, image.mimeType || "image/jpeg");
+      const url = URL.createObjectURL(S.afterBlob);
+      S.versions.push({ label, url, steps, metrics: S.metrics, blob: S.afterBlob });
+      S.rendered = S.versions.length - 1;
+      const m = S.metrics || {};
+      const nums = [m.texture_retention != null && `질감 보존 ${m.texture_retention}`, m.deltaE_mean != null && `ΔE ${m.deltaE_mean}`,
+                    m.clip_high_pct != null && `클리핑 ${m.clip_high_pct}%`].filter(Boolean);
+      ent.html(`<div class="nums">${nums.map((n) => `<span class="num">${esc(n)}</span>`).join("")}${(m.gates || []).filter((g) => g !== "PASS").map((g) => `<span class="num" style="color:var(--accent)">${esc(g)}</span>`).join("")}</div>`);
+      ent.thumbs([url]);
+      ent.done(`${json && json.seconds != null ? json.seconds + "초 렌더 · " : ""}${steps.length}단계 · 버전 ${label}`);
+      drawVersions(); select(S.versions.length - 1);
+    } catch (e) { ent.fail(mcpMsg(e)); throw e; }
+  }
+
+  function drawVersions() {
+    $("versions").innerHTML = `<button type="button" data-v="-1" aria-pressed="${S.sel === -1}"><img src="${S.beforeUrl}" alt="원본"><span>원본</span></button>` +
+      S.versions.map((v, i) => `<button type="button" data-v="${i}" aria-pressed="${S.sel === i}"><img src="${v.url}" alt="버전 ${esc(v.label)}"><span>${esc(v.label)}</span></button>`).join("");
+  }
+  function select(i) {
+    S.sel = i;
+    if (i < 0) $("view").innerHTML = `<img class="single" src="${S.beforeUrl}" alt="원본">`;
+    else showBA(S.beforeUrl, S.versions[i].url);
+    drawVersions();
+    if (i >= 0) renderCards(S.versions[i]);
+  }
+  $("versions").addEventListener("click", (e) => { const b = e.target.closest("[data-v]"); if (b) select(+b.dataset.v); });
+
+  function showBA(beforeUrl, afterUrl) {
+    $("view").innerHTML = `<div class="ba" style="--cut:50%"><img src="${beforeUrl}" alt="보정 전"><div class="after"><img src="${afterUrl}" alt="보정 후"></div><div class="bar"></div><span class="tag l">전</span><span class="tag r">후</span><input type="range" min="0" max="100" value="50" aria-label="전후 비교 위치"></div>`;
+    $("view").querySelector("input").addEventListener("input", (e) => e.target.closest(".ba").style.setProperty("--cut", e.target.value + "%"));
+  }
+  function renderCards(v) {
+    $("cards").innerHTML = `<div class="card"><h3>버전 ${esc(v.label)} 레시피</h3><details><summary>${v.steps.length}단계 보기</summary><pre>${esc(JSON.stringify(v.steps, null, 1))}</pre></details></div>`;
+  }
+
+  async function run(extra) {
+    if (S.busy) return;
+    S.busy = true; $("go").disabled = true; $("redo").disabled = true; $("err").textContent = "";
+    S.t0 = Date.now(); ticker = ticker || setInterval(tick, 250);
+    let phase = "mcp";
+    try {
+      if (!extra) {
+        $("log").innerHTML = ""; S.versions = []; S.sel = -1; S.steps = null;
+        await upload(S.file);
+        await analyze();
+        select(-1);
+      }
+      phase = "sample";
+      const ent = entry(extra ? "Claude가 수정 요청 반영" : "Claude가 레시피 작성", extra ? `"${extra}"` : "사진과 분석을 보고 판단");
+      const imgs = [S.beforeBlob].concat(extra && S.afterBlob ? [S.afterBlob] : []);
+      let r; try { r = await ask(planPrompt(extra), imgs, ent); } catch (e) { ent.fail(sampleMsg(e)); throw e; }
+      if (!r || !Array.isArray(r.steps)) { ent.fail(sampleMsg({ code: "bad_recipe" })); throw { code: "bad_recipe" }; }
+      ent.done(`${r.steps.length}단계 레시피`);
+      phase = "mcp";
+      const base = S.versions.length;
+      await renderSteps(r.steps, "v" + (base + 1));
+      for (let round = 1; round <= 2; round++) {
+        phase = "sample";
+        const rv = entry(`Claude 검수 ${round}`, "원본과 결과를 비교");
+        let res; try { res = await ask(reviewPrompt(), [S.beforeBlob, S.afterBlob], rv); } catch (e) { rv.fail(sampleMsg(e)); throw e; }
+        const score = res && res.score != null ? ` · ${res.score}/10` : "";
+        if (res.ok || !Array.isArray(res.steps)) { rv.done("통과" + score); break; }
+        rv.done("수정 필요" + score);
+        phase = "mcp";
+        await renderSteps(res.steps, "v" + (S.versions.length + 1));
+      }
+      const fin = entry("완료", ""); fin.done(`버전 ${S.versions.length}개 · 전체 ${sec(Date.now() - S.t0)}`);
+      $("actions").hidden = !S.downloads; $("refine").hidden = false;
+    } catch (e) {
+      $("err").textContent = phase === "sample" ? sampleMsg(e) : mcpMsg(e);
+    } finally {
+      S.busy = false; S.t0 = 0; $("go").disabled = !S.file; $("redo").disabled = false; tick();
+    }
+  }
+
+  function pick(f) {
+    if (!f) return;
+    S.file = f; S.job = null; S.steps = null; S.versions = []; S.sel = -1;
+    $("hint").innerHTML = `<b>${esc(f.name)}</b>${(f.size / 1048576).toFixed(1)}MB · 다른 사진을 고르려면 다시 누르기`;
+    $("view").innerHTML = `<img class="single" src="${URL.createObjectURL(f)}" alt="원본 사진">`;
+    $("versions").innerHTML = ""; $("cards").innerHTML = ""; $("log").innerHTML = ""; $("logbox").hidden = true;
+    $("actions").hidden = true; $("refine").hidden = true;
+    $("go").disabled = !(S.mcp && S.sample);
+  }
+  $("file").addEventListener("change", (e) => pick(e.target.files[0]));
+  const drop = $("drop");
+  ["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", (e) => pick(e.dataTransfer.files[0]));
+  $("go").addEventListener("click", () => run());
+  $("redo").addEventListener("click", () => { const t = $("ask").value.trim(); if (t) { if (S.sel >= 0) { S.steps = S.versions[S.sel].steps; S.afterBlob = S.versions[S.sel].blob; } run(t); } });
+
+  $("save").addEventListener("click", async () => {
+    if (!S.job || !S.downloads || S.sel < 0) return;
+    $("save").disabled = true; $("err").textContent = "";
+    try {
+      const v = S.versions[S.sel];
+      if (S.rendered !== S.sel) {
+        $("save").textContent = "선택한 버전 다시 렌더링…";
+        await tool("render", { job_id: S.job, recipe_json: JSON.stringify({ steps: v.steps }), preview_px: 400 });
+        S.rendered = S.sel;
+      }
+      const parts = []; let i = 0;
+      for (;;) {
+        $("save").textContent = `받는 중 ${i + 1}…`;
+        const { json } = await tool("export", { job_id: S.job, index: i, chunk_b64_chars: 700000 });
+        parts.push(b64ToBlob(json.data_b64)); i++;
+        if (json.done) break;
+      }
+      const base = (S.file.name || "photo").replace(/\.[^.]+$/, "");
+      await S.downloads.save({ filename: `${base}_${v.label}.jpg`, data: new Blob(parts, { type: "image/jpeg" }) });
+    } catch (e) {
+      if (!(e && e.code === "declined")) $("err").textContent = mcpMsg(e);
+    } finally { $("save").disabled = false; $("save").textContent = "선택한 버전을 원본 해상도로 저장"; }
+  });
+
+  (async () => {
+    const use = window.claude && window.claude.use;
+    if (!use) { $("err").textContent = "Claude 안에서 열어야 동작해요."; return; }
+    const [mcp, sample, downloads] = await Promise.all([use("mcp"), use("sample"), use("downloads")]);
+    S.mcp = mcp; S.sample = sample; S.downloads = downloads;
+    if (!mcp) { $("err").textContent = `이 화면에서는 서버 엔진("${SERVER}")에 연결할 수 없어요.`; return; }
+    if (!sample) { $("err").textContent = "이 화면에서는 Claude를 부를 수 없어요."; return; }
+    // limits() is advisory: when it reports no images we still try once, and fall back on rejection
+    try { const lim = await sample.limits(); S.canImages = lim && lim.images ? true : "try"; } catch { S.canImages = "try"; }
+    try { const lt = await mcp.listTools(); S.fileArgs = !!lt.fileArgs; } catch {}
+    if (S.canImages === "try") $("info").textContent = "이미지 전송 가능 여부를 첫 판단 때 확인해요.";
+    $("go").disabled = !S.file;
+  })();
+})();
+</script>

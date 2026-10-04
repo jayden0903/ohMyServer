@@ -1,0 +1,13 @@
+[Unit]
+Description=Retouch engine MCP server
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/ohMyServer
+ExecStart=/bin/sh -c 'RETOUCH_TOKEN=$(cat %h/.config/retouch/token) exec %h/ohMyServer/.venv/bin/python -m retouch.mcp_server --host 127.0.0.1 --port 8765'
+Restart=on-failure
+RestartSec=5
+Environment=OMP_NUM_THREADS=8
+
+[Install]
+WantedBy=default.target
